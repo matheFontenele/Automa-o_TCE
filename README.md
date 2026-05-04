@@ -1,56 +1,20 @@
-# TCE-CE Data Extractor
+# Automação de Extração de Dados - TCE-CE
 
-Este projeto consiste em uma ferramenta de automação desenvolvida em Python para extração, processamento e exportação de dados financeiros a partir da API de Dados Abertos do Tribunal de Contas do Estado do Ceará (TCE-CE).
+Este sistema realiza a extração automatizada de notas de empenho e notas fiscais da API de dados abertos do TCE-CE, consolidando os dados para análise.
 
-## Funcionalidades
-- **Extração Automatizada:** Coleta dados de Notas de Empenho, Notas Fiscais e Itens de Notas Fiscais.
-- **Abrangência:** Varredura completa por município e por período (mensal/anual).
-- **Exportação Flexível:** Os dados são salvos automaticamente em formato **CSV** (para análise em Power BI/Excel) e **JSON** (para consumo em aplicações).
-- **Tratamento de Dados:** Utilização da biblioteca `pandas` para estruturação e manipulação dos DataFrames.
+## Como utilizar
 
-## Tecnologias Utilizadas
-- **Python 3**
-- **Requests:** Para requisições HTTP à API do TCE-CE.
-- **Pandas:** Para manipulação e exportação de dados.
-- **JSON:** Para entrada de configuração e saída de dados estruturados.
+Para iniciar o sistema pela primeira vez ou realizar uma nova extração:
 
-## Pré-requisitos
-Certifique-se de ter o Python instalado e um ambiente virtual configurado:
+1. Abra a pasta deste projeto.
+2. Dê um **duplo clique** no arquivo `run.bat`.
+3. Aguarde a tela preta (terminal) carregar as dependências automaticamente.
+4. O navegador abrirá automaticamente em uma nova janela com o Painel de Controle.
 
+## No Painel de Controle:
+- **Extração:** Selecione o ano desejado no campo "Ano Base" e clique no botão **Executar Extração**.
+- **Visualização:** Utilize as abas superiores para navegar entre os dados de "Notas de Empenho" e "Notas Fiscais".
+- **Dados:** Os arquivos resultantes ficam salvos automaticamente na pasta `data/`.
 
-### Clone o repositório
-```bash
-git clone [https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git](https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git)
-```
-
-### Crie o ambiente virtual
-
-```bash
-python -m venv venv
-source venv/bin/activate
-```
-
-### Instale as dependências
-```bash
-pip install pandas requests
-```
-
-## Estrutura do projeto
-- main.py: Script principal contendo a lógica de extração e salvamento.
-- municipios.json: Arquivo de entrada contendo a lista de municípios a serem consultados.
-- output/: (Pasta gerada automaticamente) Destino dos arquivos CSV e JSON extraídos.
-
-### Como Executar
-- Certifique-se de que o arquivo municipios.json esteja na raiz do projeto seguindo a estrutura esperada (lista de municípios com codigo_municipio).
-- Execute o script principal:
-  ```
-  python main.py
-  ```
-
-### Notas de Desenvolvimento
-- O script gerencia a latência da API com time.sleep para evitar bloqueios de requisição.
-- A estrutura de dados baseia-se no endpoint de Dados Abertos do TCE-CE. Caso precise adaptar para outros endpoints, basta ajustar os parâmetros na função extrair_dados.
-
-  ---
-
-  Desenvolvido por Matheus Fontenele
+## Suporte
+Em caso de erro ou necessidade de atualização, contate o responsável pelo desenvolvimento do sistema.
