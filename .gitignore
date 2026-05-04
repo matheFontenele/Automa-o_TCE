@@ -1,30 +1,33 @@
-# --- Ambiente Virtual e Python Portátil ---
-# Impede que o Git suba a sua venv e a pasta do Python portátil
+# --- Ambiente Virtual e Executáveis ---
+# Ignora ambientes virtuais, pastas de Python portátil e instaladores
 venv/
 .venv/
 env/
+Python/
+*.exe
 
-# --- Cache de Python ---
+# --- Cache e compilados de Python ---
 __pycache__/
 *.py[cod]
 *$py.class
 
-# --- Dados Gerados (Importante!) ---
-# O Git não deve controlar arquivos de dados gerados automaticamente
-# para evitar que o repositório fique gigante.
+# --- Dados Gerados ---
+# Ignora a pasta de dados e arquivos de resultados
 data/
 *.csv
 *.json
-#Ignorar menos o arquivo de municípios
+# O "!" inverte a regra: mantém o município.json que é essencial para o script
 !municipios.json
 
-# --- Logs e arquivos temporários ---
-*.log
-.tmp
-.DS_Store
-Thumbs.db
-
-# --- Configurações de IDE ---
+# --- Arquivos de Sistema e IDE ---
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db
 .env
+
+# --- Logs ---
+*.log
+
+# --- Arquivos temporários criados pelo seu instalador ---
+python_installer.exe

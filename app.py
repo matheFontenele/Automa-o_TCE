@@ -61,6 +61,7 @@ def exibir_csv(tipo_dado):
     
     if st.button(f"Carregar {arquivo_selecionado}", key=f"btn_{arquivo_selecionado}"):
         df = pd.read_csv(os.path.join('data', arquivo_selecionado), sep=';', encoding='utf-8-sig')
+        df = df.astype(str)
         st.dataframe(df, use_container_width=True)
 
 with tab1:
