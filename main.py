@@ -15,8 +15,14 @@ def carregar_municipios():
 # Função de Extração (Core)
 def extrair_dados(nome_dataset, url_base, params_base, nome_arquivo, municipios, log_func=print):
     log_func(f"\n--- Iniciando extração: {nome_dataset} ---")
-    todos_os_dados = []
     
+    os.makedirs('data', exist_ok=True)
+    caminho_csv = os.path.join('data', f"{nome_arquivo}.csv")
+    
+    # Flags para controle de escrita
+    header_escrito = False
+    tem_dados = False
+
     for m in municipios:
         log_func(f"[{nome_dataset}] Buscando: {m['nome_municipio']} ({m['codigo_municipio']})")
         
@@ -28,11 +34,21 @@ def extrair_dados(nome_dataset, url_base, params_base, nome_arquivo, municipios,
             
             if response.status_code == 200:
                 dados = response.json().get("elements", [])
+                
                 if dados:
+                    tem_dados = True
                     for item in dados:
                         item['municipio_referencia'] = m['nome_municipio']
-                    todos_os_dados.extend(dados)
-                    log_func(f" -> {len(dados)} registros encontrados.")
+                    
+                    # --- ESCRITA INCREMENTAL ---
+                    df = pd.DataFrame(dados)
+                    
+                    # Se for o primeiro lote, escreve o header, senão, apenas os dados (header=False)
+                    mode = 'w' if not header_escrito else 'a'
+                    df.to_csv(caminho_csv, mode=mode, index=False, sep=';', encoding='utf-8-sig', header=not header_escrito)
+                    
+                    header_escrito = True # Garante que só escreve o cabeçalho uma vez
+                    log_func(f" -> {len(dados)} registros salvos.")
                 else:
                     log_func(" -> Sem registros.")
             else:
@@ -40,27 +56,12 @@ def extrair_dados(nome_dataset, url_base, params_base, nome_arquivo, municipios,
         except Exception as e:
             log_func(f" -> Erro de conexão: {e}")
             
-        time.sleep(0.3) # Respeito à API
+        time.sleep(0.3) 
 
-    if todos_os_dados:
-        # Garante a pasta 'data'
-        os.makedirs('data', exist_ok=True)
-        
-        caminho_csv = os.path.join('data', f"{nome_arquivo}.csv")
-        caminho_json = os.path.join('data', f"{nome_arquivo}.json")
-
-        df = pd.DataFrame(todos_os_dados)
-
-        # Salva em CSV
-        df.to_csv(caminho_csv, index=False, sep=';', encoding='utf-8-sig')
-        log_func(f"Arquivo '{caminho_csv}' salvo com sucesso!")
-
-        # Salva em JSON
-        with open(caminho_json, 'w', encoding='utf-8') as f_json:
-            json.dump(todos_os_dados, f_json, ensure_ascii=False, indent=4)
-        log_func(f"Arquivo '{caminho_json}' salvo com sucesso!")
-    else:
+    if not tem_dados:
         log_func(f"Nenhum dado encontrado para {nome_dataset}.")
+    else:
+        log_func(f"Processo finalizado. Arquivo '{caminho_csv}' atualizado.")
 
 # Função Wrapper facilitada
 def executar_pipeline(ano, mes_selecionado=None, municipio_selecionado=None, log_func=print):
@@ -102,12 +103,17 @@ def executar_pipeline(ano, mes_selecionado=None, municipio_selecionado=None, log
                       {"exercicio_orcamento": exercicio, "data_referencia_doc": data_ref, "$format": "json"}, 
                       f"notas_pagamentos_{ano}_{mes:02d}", municipios, log_func=log_func)
         
-        # 4. Liquidações
+        # 4. Pagamento e Liquidações
         extrair_dados("Liquidações", "https://api-dados-abertos.tce.ce.gov.br/sim/pagamentos_liquidacoes", 
                       {"exercicio_orcamento": exercicio, "data_referencia_doc": data_ref, "$format": "json"}, 
                       f"liquidacoes_{ano}_{mes:02d}", municipios, log_func=log_func)
 
-    # 5. Itens de Notas Fiscais (Anual) - Mantido fora do loop
+        # 5. Liquidações
+        extrair_dados("Liquidações", "https://api-dados-abertos.tce.ce.gov.br/sim/liquidacoes", 
+                      {"exercicio_orcamento": exercicio, "data_referencia_doc": data_ref, "$format": "json"}, 
+                      f"liquidacoes_{ano}_{mes:02d}", municipios, log_func=log_func)
+
+    # 6. Itens de Notas Fiscais (Anual) - Mantido fora do loop
     extrair_dados("Itens de Notas Fiscais", "https://api-dados-abertos.tce.ce.gov.br/sim/itens_notas_fiscais", 
                   {"exercicio_orcamento": exercicio, "$format": "json"}, f"itens_notas_fiscais_{ano}", municipios, log_func=log_func)
 

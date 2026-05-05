@@ -43,7 +43,7 @@ with st.sidebar:
 
 # Visualização de Dados (Tabs)
 st.header("Visualizar Dados")
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Notas de Empenho", "Notas Fiscais", "Notas de Pagamento", "Liquidações", "Itens de Notas Fiscais"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Notas de Empenho", "Notas Fiscais", "Notas de Pagamento", "Pagamento e Liquidações", "Liquidações", "Itens de Notas Fiscais"])
 
 def exibir_csv(tipo_dado):
     # Lista arquivos na pasta 'data'
