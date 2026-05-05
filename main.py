@@ -47,12 +47,18 @@ def processar_lote(task):
         return False # Falha
 
 # Função Principal
-def executar_pipeline(ano, max_workers=5):
+def executar_pipeline(ano, mes_selecionado=None, municipio_selecionado=None, log_func=print):
     municipios = carregar_municipios()
     os.makedirs('data', exist_ok=True)
     
     exercicio = int(f"{ano}00")
     lista_de_tarefas = []
+
+    if mes_selecionado == "Todos":
+        mes_selecionado = None
+        
+    if municipio_selecionado == "Todos":
+        municipio_selecionado = None
 
     # 1. Endpoints Mensais (precisam de mês)
     endpoints_mensais = [
@@ -92,14 +98,33 @@ def executar_pipeline(ano, max_workers=5):
     print(f"Total de tarefas a processar: {len(lista_de_tarefas)}")
     
     # Execução Paralela com Barra de Progresso
+    max_workers = 5 #
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         list(tqdm(executor.map(processar_lote, lista_de_tarefas), total=len(lista_de_tarefas), desc="Baixando dados"))
 
 if __name__ == "__main__":
-    ano = 2025
-    if len(sys.argv) > 1:
-        ano = int(sys.argv[1])
-    
-    print(f"Iniciando extração paralela para {ano}...")
-    executar_pipeline(ano)
-    print("\nProcesso finalizado!")
+    # Valores padrão de segurança
+    ano_inicio = 2025
+    ano_fim = 2025
+
+    # Se o usuário passou apenas 1 argumento (ex: python main.py 2024)
+    if len(sys.argv) == 2:
+        ano_inicio = int(sys.argv[1])
+        ano_fim = ano_inicio
+        
+    # Se o usuário passou 2 argumentos (ex: python main.py 2020 2025)
+    elif len(sys.argv) >= 3:
+        # Usamos min e max para garantir que o menor ano seja sempre o início, 
+        # mesmo que você digite invertido no terminal
+        ano_inicio = min(int(sys.argv[1]), int(sys.argv[2]))
+        ano_fim = max(int(sys.argv[1]), int(sys.argv[2]))
+
+    print(f"Iniciando extração paralela para o período de {ano_inicio} a {ano_fim}...")
+
+    # Loop que passa por cada ano do intervalo (o +1 garante que o último ano seja incluído)
+    for ano_atual in range(ano_inicio, ano_fim + 1):
+        print(f"\n[{ano_atual}] - Iniciando processamento do ano...")
+        executar_pipeline(ano_atual)
+        print(f"[{ano_atual}] - Processamento concluído!")
+
+    print("\nProcesso total finalizado com sucesso!")
