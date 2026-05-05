@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import glob
 from main import executar_pipeline, carregar_municipios
 
 st.set_page_config(page_title="Automação TCE-CE", layout="wide")
@@ -45,27 +46,42 @@ with st.sidebar:
 st.header("Visualizar Dados")
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Notas de Empenho", "Notas Fiscais", "Notas de Pagamento", "Pagamento e Liquidações", "Liquidações", "Itens de Notas Fiscais"])
 
-def exibir_csv(tipo_dado):
-    # Lista arquivos na pasta 'data'
-    if not os.path.exists('data'):
-        st.warning("Pasta 'data' não encontrada.")
-        return
-
-    arquivos = [f for f in os.listdir('data') if tipo_dado in f and f.endswith('.csv')]
+def carregar_e_exibir_dados(tipo_dado):
+    # Procura todos os arquivos parquet que começam com o nome do tipo (ex: 'notas_empenho')
+    # O padrão glob 'data/{tipo_dado}_*.parquet' pega todos os meses/municipios
+    padrao = os.path.join('data', f"{tipo_dado}_*.parquet")
+    arquivos = glob.glob(padrao)
     
     if not arquivos:
-        st.warning(f"Nenhum arquivo de {tipo_dado} encontrado. Realize a extração primeiro.")
+        st.warning(f"Nenhum arquivo de {tipo_dado} encontrado na pasta 'data'.")
         return
 
-    arquivo_selecionado = st.selectbox(f"Selecione o arquivo de {tipo_dado}:", arquivos, key=tipo_dado)
-    
-    if st.button(f"Carregar {arquivo_selecionado}", key=f"btn_{arquivo_selecionado}"):
-        df = pd.read_csv(os.path.join('data', arquivo_selecionado), sep=';', encoding='utf-8-sig')
-        df = df.astype(str)
-        st.dataframe(df, use_container_width=True)
+    if st.button(f"Carregar todos os dados de {tipo_dado}"):
+        with st.spinner("Concatenando arquivos Parquet..."):
+            df = pd.concat([pd.read_parquet(f) for f in arquivos], ignore_index=True)
+            
+            # Converte tudo para string para evitar erros de visualização no Streamlit
+            df = df.astype(str)
+            
+            st.success(f"Carregados {len(df)} registros!")
+            st.dataframe(df, use_container_width=True)
+            
+            # Botão de download do consolidado
+            st.download_button(
+                label="Baixar dados consolidados (CSV)",
+                data=df.to_csv(index=False).encode('utf-8'),
+                file_name=f"{tipo_dado}_consolidado.csv",
+                mime='text/csv'
+            )
 
 with tab1:
-    exibir_csv("notas_empenho")
+    carregar_e_exibir_dados("notas_empenho")
 
 with tab2:
-    exibir_csv("notas_fiscais")
+    carregar_e_exibir_dados("notas_fiscais")
+
+with tab3:
+    carregar_e_exibir_dados("notas_pagamentos")
+
+with tab4:
+    carregar_e_exibir_dados("liquidacoes")
