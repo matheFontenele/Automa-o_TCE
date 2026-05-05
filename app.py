@@ -97,4 +97,10 @@ with tab3:
     carregar_e_exibir_dados("notas_pagamentos")
 
 with tab4:
+    carregar_e_exibir_dados("Pagamento e Liquidações")
+
+with tab5:
     carregar_e_exibir_dados("liquidacoes")
+
+with tab6:
+    carregar_e_exibir_dados("itens_notas_fiscais")    
