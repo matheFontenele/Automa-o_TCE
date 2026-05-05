@@ -1,10 +1,10 @@
 import os
 import sys
-import time
 import requests
 import pandas as pd
 import concurrent.futures
 import json
+from tqdm import tqdm 
 
 # --- CONFIGURAÇÕES GERAIS ---
 def carregar_municipios():
@@ -14,16 +14,15 @@ def carregar_municipios():
 
 # Função de processamento em lote
 def processar_lote(task):
-    
     dataset_nome = task['dataset_nome']
     url = task['url']
     params = task['params']
     caminho_arquivo = task['caminho_arquivo']
     municipio_nome = task['municipio_nome']
 
-    # 1. CHECKPOINT: Se já existe, não baixa novamente (Resiliência)
+    # CHECKPOINT: Se já existe, não baixa novamente
     if os.path.exists(caminho_arquivo):
-        return f"[SKIP] {dataset_nome} - {municipio_nome} (Já existe)"
+        return None # Retorna None para não poluir o tqdm
 
     try:
         response = requests.get(url, headers={"Accept": "application/json"}, params=params, timeout=30)
@@ -36,16 +35,16 @@ def processar_lote(task):
                     item['municipio_referencia'] = municipio_nome
                 
                 df = pd.DataFrame(dados)
-                # Salva em Parquet com compressão snappy
+                # Salva em Parquet
                 df.to_parquet(caminho_arquivo, engine='pyarrow', compression='snappy')
-                return f"[OK] {dataset_nome} - {municipio_nome} ({len(dados)} reg)"
+                return True
             else:
-                return f"[VAZIO] {dataset_nome} - {municipio_nome}"
+                return False # Vazio
         else:
-            return f"[ERRO {response.status_code}] {dataset_nome} - {municipio_nome}"
+            return False # Erro
             
-    except Exception as e:
-        return f"[FALHA] {dataset_nome} - {municipio_nome}: {str(e)}"
+    except Exception:
+        return False # Falha
 
 # Função Principal
 def executar_pipeline(ano, max_workers=5):
@@ -55,48 +54,52 @@ def executar_pipeline(ano, max_workers=5):
     exercicio = int(f"{ano}00")
     lista_de_tarefas = []
 
-    # Configuração dos Endpoints
-    endpoints = [
+    # 1. Endpoints Mensais (precisam de mês)
+    endpoints_mensais = [
         ("Notas de Empenho", "https://api-dados-abertos.tce.ce.gov.br/sim/notas_empenhos"),
         ("Notas Fiscais", "https://api-dados-abertos.tce.ce.gov.br/sim/notas_fiscais"),
         ("Notas de Pagamento", "https://api-dados-abertos.tce.ce.gov.br/sim/notas_pagamentos"),
-        ("Pagamento e Liquidações", "https://api-dados-abertos.tce.ce.gov.br/sim/pagamentos_liquidacoes"),
-        ("Liquidações", "https://api-dados-abertos.tce.ce.gov.br/sim/pagamentos_liquidacoes"),
+        ("Liquidações", "https://api-dados-abertos.tce.ce.gov.br/sim/pagamentos_liquidacoes")
+    ]
+
+    # 2. Endpoints Anuais (não aceitam mês)
+    endpoints_anuais = [
         ("Itens de Notas Fiscais", "https://api-dados-abertos.tce.ce.gov.br/sim/itens_notas_fiscais")
     ]
 
-    # Prepara a fila de tarefas (Tudo que precisa ser baixado)
+    # Prepara tarefas mensais
     for mes in range(1, 13):
         data_ref = int(f"{ano}{str(mes).zfill(2)}")
-        for endpoint in endpoints:
-            nome_dataset, url = endpoint
+        for nome, url in endpoints_mensais:
             for m in municipios:
-                caminho = os.path.join('data', f"{nome_dataset.replace(' ', '_').lower()}_{ano}_{mes:02d}_{m['codigo_municipio']}.parquet")
-                
+                caminho = os.path.join('data', f"{nome.replace(' ', '_').lower()}_{ano}_{mes:02d}_{m['codigo_municipio']}.parquet")
                 lista_de_tarefas.append({
-                    'dataset_nome': nome_dataset,
-                    'url': url,
+                    'dataset_nome': nome, 'url': url,
                     'params': {"exercicio_orcamento": exercicio, "data_referencia_doc": data_ref, "$format": "json", "codigo_municipio": m['codigo_municipio']},
-                    'caminho_arquivo': caminho,
-                    'municipio_nome': m['nome_municipio']
+                    'caminho_arquivo': caminho, 'municipio_nome': m['nome_municipio']
                 })
+
+    # Prepara tarefas anuais
+    for nome, url in endpoints_anuais:
+        for m in municipios:
+            caminho = os.path.join('data', f"{nome.replace(' ', '_').lower()}_{ano}_{m['codigo_municipio']}.parquet")
+            lista_de_tarefas.append({
+                'dataset_nome': nome, 'url': url,
+                'params': {"exercicio_orcamento": exercicio, "$format": "json", "codigo_municipio": m['codigo_municipio']},
+                'caminho_arquivo': caminho, 'municipio_nome': m['nome_municipio']
+            })
 
     print(f"Total de tarefas a processar: {len(lista_de_tarefas)}")
     
-    # Execução Paralela (ThreadPoolExecutor)
-    # max_workers controla quantas requisições ocorrem simultaneamente
+    # Execução Paralela com Barra de Progresso
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        resultados = list(executor.map(processar_lote, lista_de_tarefas))
-    
-    # Relatório final
-    for res in resultados:
-        print(res)
+        list(tqdm(executor.map(processar_lote, lista_de_tarefas), total=len(lista_de_tarefas), desc="Baixando dados"))
 
 if __name__ == "__main__":
     ano = 2025
     if len(sys.argv) > 1:
         ano = int(sys.argv[1])
     
-    print(f"Iniciando pipeline de extração paralela para {ano}...")
+    print(f"Iniciando extração paralela para {ano}...")
     executar_pipeline(ano)
     print("\nProcesso finalizado!")
