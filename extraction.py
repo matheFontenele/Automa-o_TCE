@@ -5,12 +5,22 @@ import glob
 import re
 from main import executar_pipeline, carregar_municipios
 
+# Mapeamento para garantir que o nome da aba encontre o arquivo correto no disco
+DATA_MAP = {
+    "Notas de Empenho": "notas_empenho",
+    "Notas Fiscais": "notas_fiscais",
+    "Notas de Pagamento": "notas_pagamentos",
+    "Pagamento e Liquidações": "pagamento_e_liquidacoes",
+    "Liquidações": "liquidacoes",
+    "Itens de Notas Fiscais": "itens_notas_fiscais"
+}
+
 def render_extraction_page():
     # --- SIDEBAR (CONFIGURAÇÕES) ---
     with st.sidebar:
         st.header("Configurações")
         
-        # Salvando inputs no session_state para persistir entre as abas/páginas
+        # Persistência de estado
         if 'ano_input' not in st.session_state: st.session_state.ano_input = 2025
         st.session_state.ano_input = st.number_input("Ano Base", min_value=2000, max_value=2030, value=st.session_state.ano_input)
 
@@ -37,70 +47,68 @@ def render_extraction_page():
 
     # --- ÁREA PRINCIPAL ---
     st.header("Visualizar Dados")
-    
-    def carregar_e_exibir_dados(tipo_dado):
+
+    def carregar_e_exibir_dados(tipo_arquivo_prefixo):
         # 1. Recuperar valores do session_state
         ano = st.session_state.ano_input
         mes = st.session_state.mes_input
         mun = st.session_state.mun_input
 
-        # 2. Configurar wildcards (curingas) para busca
+        # 2. Configurar wildcards
         ano_str = "*" if ano == "Todos" else str(ano)
         mes_str = "*" if mes == "Todos" else str(mes).zfill(2)
-    
+        
         if mun == "Todos":
             mun_str = "*"
         else:
-            # Extrai o código entre parênteses: "CRATO (049)" -> "049"
             match = re.search(r'\((\d+)\)', mun)
             mun_str = match.group(1) if match else "*"
 
-        # 3. Determinar o padrão de nome do arquivo
-        if "itens_notas_fiscais" in tipo_dado:
-            padrao = os.path.join('data', f"{tipo_dado}_{ano_str}_{mun_str}.parquet")
+        # 3. Determinar o padrão de nome
+        # Se for itens de notas fiscais ou algo sem mês no nome, ajusta o padrão
+        if "itens_notas_fiscais" in tipo_arquivo_prefixo:
+            padrao = os.path.join('data', f"{tipo_arquivo_prefixo}_{ano_str}_{mun_str}.parquet")
         else:
-            # Padrão para arquivos mensais
-            padrao = os.path.join('data', f"{tipo_dado}_{ano_str}_{mes_str}_{mun_str}.parquet")
+            padrao = os.path.join('data', f"{tipo_arquivo_prefixo}_{ano_str}_{mes_str}_{mun_str}.parquet")
 
         arquivos = glob.glob(padrao)
 
-        # Debug visual
         with st.expander("Ver detalhes da busca"):
-            st.write(f"Padrão de busca: `{padrao}`")
+            st.write(f"Padrão: `{padrao}`")
             st.write(f"Arquivos encontrados: {len(arquivos)}")
 
         if not arquivos:
-            st.warning(f"Nenhum arquivo encontrado para estes filtros.")
+            st.warning("Nenhum arquivo encontrado.")
             return
 
-        # 4. Botão de carga dinâmica
-        if st.button(f"Carregar {len(arquivos)} arquivos", key=f"btn_{tipo_dado}"):
-            with st.spinner("Consolidando dados..."):
+        # 4. Botão de carga
+        if st.button(f"Carregar {len(arquivos)} arquivos", key=f"btn_{tipo_arquivo_prefixo}"):
+            with st.spinner("Consolidando..."):
                 try:
-                    # Carrega todos os arquivos encontrados
                     df_lista = [pd.read_parquet(f) for f in arquivos]
                     df = pd.concat(df_lista, ignore_index=True)
-                
-                    # Garante que tudo seja texto para evitar conflitos de tipos
                     df = df.astype(str)
 
-                    st.success(f"Sucesso! {len(df)} registros carregados.")
-                    st.dataframe(df, use_container_width=True)
+                    st.success(f"Sucesso! {len(df)} registros totais.")
+                    
+                    # Exibir apenas o cabeçalho para não travar o navegador
+                    st.info("Exibindo visualização das primeiras 1000 linhas.")
+                    st.dataframe(df.head(1000), use_container_width=True)
 
-                    # Download
+                    # Download do arquivo completo
                     st.download_button(
-                        label="Baixar consolidado (CSV)",
+                        label="Baixar consolidado COMPLETO (CSV)",
                         data=df.to_csv(index=False, sep=';').encode('utf-8-sig'),
-                        file_name=f"export_{tipo_dado}_{ano_str}.csv",
-                    mime='text/csv'
+                        file_name=f"export_{tipo_arquivo_prefixo}.csv",
+                        mime='text/csv'
                     )
                 except Exception as e:
-                    st.error(f"Erro ao carregar arquivos: {e}")
+                    st.error(f"Erro ao carregar: {e}")
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Notas de Empenho", "Notas Fiscais", "Notas de Pagamento", "Pagamento e Liquidações", "Liquidações", "Itens de Notas Fiscais"])
-    with tab1: carregar_e_exibir_dados("notas_empenho")
-    with tab2: carregar_e_exibir_dados("notas_fiscais")
-    with tab3: carregar_e_exibir_dados("notas_pagamentos")
-    with tab4: carregar_e_exibir_dados("Pagamento e Liquidações")
-    with tab5: carregar_e_exibir_dados("liquidacoes")
-    with tab6: carregar_e_exibir_dados("itens_notas_fiscais")
+    # Criação dinâmica das abas usando o dicionário
+    abas = st.tabs(list(DATA_MAP.keys()))
+    
+    for i, nome_aba in enumerate(DATA_MAP.keys()):
+        with abas[i]:
+            # Passa o valor real do arquivo (prefixo) para a função
+            carregar_e_exibir_dados(DATA_MAP[nome_aba])
