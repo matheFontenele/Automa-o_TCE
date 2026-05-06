@@ -4,7 +4,7 @@ import requests
 import pandas as pd
 import concurrent.futures
 import json
-from tqdm import tqdm 
+from tqdm import tqdm
 
 # --- CONFIGURAÇÕES GERAIS ---
 def carregar_municipios():
@@ -12,118 +12,115 @@ def carregar_municipios():
         data = json.load(f)
     return data['elements']
 
-# Função de processamento em lote
 def processar_lote(task):
-    dataset_nome = task['dataset_nome']
-    url = task['url']
-    params = task['params']
+    """Executa o download e salvamento de um único lote."""
     caminho_arquivo = task['caminho_arquivo']
-    municipio_nome = task['municipio_nome']
-
-    # CHECKPOINT: Se já existe, não baixa novamente
+    
+    # Checkpoint: se o arquivo já existe, pula
     if os.path.exists(caminho_arquivo):
-        return None # Retorna None para não poluir o tqdm
+        return None
 
     try:
-        response = requests.get(url, headers={"Accept": "application/json"}, params=params, timeout=30)
-        
+        response = requests.get(task['url'], headers={"Accept": "application/json"}, params=task['params'], timeout=30)
         if response.status_code == 200:
             dados = response.json().get("elements", [])
-            
             if dados:
+                # Adiciona metadado de município se necessário
                 for item in dados:
-                    item['municipio_referencia'] = municipio_nome
+                    item['municipio_referencia'] = task['municipio_nome']
                 
                 df = pd.DataFrame(dados)
-                # Salva em Parquet
                 df.to_parquet(caminho_arquivo, engine='pyarrow', compression='snappy')
                 return True
-            else:
-                return False # Vazio
-        else:
-            return False # Erro
-            
+        return False
     except Exception:
-        return False # Falha
+        return False
 
-# Função Principal
-def executar_pipeline(ano, mes_selecionado=None, municipio_selecionado=None, log_func=print):
+def gerar_tarefas(ano, mes_selecionado, municipio_selecionado):
+    """Gera a lista de tarefas baseada nos filtros aplicados."""
     municipios = carregar_municipios()
-    os.makedirs('data', exist_ok=True)
     
+    # Filtra municípios se solicitado
+    if municipio_selecionado:
+        municipios = [m for m in municipios if m['codigo_municipio'] == municipio_selecionado['codigo_municipio']]
+
     exercicio = int(f"{ano}00")
     lista_de_tarefas = []
 
-    if mes_selecionado == "Todos":
-        mes_selecionado = None
-        
-    if municipio_selecionado == "Todos":
-        municipio_selecionado = None
+    if mes_selecionado == "Todos" or mes_selecionado is None or mes_selecionado == "":
+        meses = range(1, 13)
+    else:
+        # Garante que seja um inteiro (caso o Streamlit passe string)
+        meses = [int(mes_selecionado)]
+    # -------------------------------
 
-    # 1. Endpoints Mensais (precisam de mês)
+    # Configuração dos endpoints
     endpoints_mensais = [
-        ("Notas de Empenho", "https://api-dados-abertos.tce.ce.gov.br/sim/notas_empenhos"),
-        ("Notas Fiscais", "https://api-dados-abertos.tce.ce.gov.br/sim/notas_fiscais"),
-        ("Notas de Pagamento", "https://api-dados-abertos.tce.ce.gov.br/sim/notas_pagamentos"),
-        ("Liquidações", "https://api-dados-abertos.tce.ce.gov.br/sim/pagamentos_liquidacoes")
+        ("notas_empenho", "https://api-dados-abertos.tce.ce.gov.br/sim/notas_empenhos"),
+        ("notas_fiscais", "https://api-dados-abertos.tce.ce.gov.br/sim/notas_fiscais"),
+        ("notas_pagamentos", "https://api-dados-abertos.tce.ce.gov.br/sim/notas_pagamentos"),
+        ("pagamento_e_liquidacoes", "https://api-dados-abertos.tce.ce.gov.br/sim/pagamentos_liquidacoes"),
+        ("liquidacoes", "https://api-dados-abertos.tce.ce.gov.br/sim/liquidacoes")
     ]
-
-    # 2. Endpoints Anuais (não aceitam mês)
+    
     endpoints_anuais = [
-        ("Itens de Notas Fiscais", "https://api-dados-abertos.tce.ce.gov.br/sim/itens_notas_fiscais")
+        ("itens_notas_fiscais", "https://api-dados-abertos.tce.ce.gov.br/sim/itens_notas_fiscais")
     ]
 
-    # Prepara tarefas mensais
-    for mes in range(1, 13):
+    # 1. Tarefas Mensais
+    for mes in meses:
         data_ref = int(f"{ano}{str(mes).zfill(2)}")
         for nome, url in endpoints_mensais:
             for m in municipios:
-                caminho = os.path.join('data', f"{nome.replace(' ', '_').lower()}_{ano}_{mes:02d}_{m['codigo_municipio']}.parquet")
+                caminho = os.path.join('data', f"{nome}_{ano}_{mes:02d}_{m['codigo_municipio']}.parquet")
                 lista_de_tarefas.append({
-                    'dataset_nome': nome, 'url': url,
+                    'dataset_nome': nome, 'url': url, 'municipio_nome': m['nome_municipio'],
                     'params': {"exercicio_orcamento": exercicio, "data_referencia_doc": data_ref, "$format": "json", "codigo_municipio": m['codigo_municipio']},
-                    'caminho_arquivo': caminho, 'municipio_nome': m['nome_municipio']
+                    'caminho_arquivo': caminho
                 })
 
-    # Prepara tarefas anuais
+    # 2. Tarefas Anuais
     for nome, url in endpoints_anuais:
         for m in municipios:
-            caminho = os.path.join('data', f"{nome.replace(' ', '_').lower()}_{ano}_{m['codigo_municipio']}.parquet")
+            caminho = os.path.join('data', f"{nome}_{ano}_{m['codigo_municipio']}.parquet")
             lista_de_tarefas.append({
-                'dataset_nome': nome, 'url': url,
+                'dataset_nome': nome, 'url': url, 'municipio_nome': m['nome_municipio'],
                 'params': {"exercicio_orcamento": exercicio, "$format": "json", "codigo_municipio": m['codigo_municipio']},
-                'caminho_arquivo': caminho, 'municipio_nome': m['nome_municipio']
+                'caminho_arquivo': caminho
             })
+            
+    return lista_de_tarefas
 
-    print(f"Total de tarefas a processar: {len(lista_de_tarefas)}")
+def executar_pipeline(ano, mes_selecionado=None, municipio_selecionado=None, log_func=print):
+    os.makedirs('data', exist_ok=True)
+
+    log_func(f"[{ano}] Iniciando extração...")
     
-    # Execução Paralela com Barra de Progresso
-    max_workers = 5 #
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        list(tqdm(executor.map(processar_lote, lista_de_tarefas), total=len(lista_de_tarefas), desc="Baixando dados"))
+    tarefas = gerar_tarefas(ano, mes_selecionado, municipio_selecionado)
+    
+    if not tarefas:
+        log_func(f"[{ano}] Nenhuma tarefa encontrada para os filtros atuais.")
+        return
 
+    log_func(f"[{ano}] Total de tarefas: {len(tarefas)}")
+    
+    # Execução Paralela
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        list(tqdm(executor.map(processar_lote, tarefas), total=len(tarefas), desc=f"Baixando {ano}"))
+
+
+# Função principal para execução direta
 if __name__ == "__main__":
-    # Valores padrão de segurança
-    ano_inicio = 2025
-    ano_fim = 2025
+    args = sys.argv[1:]
+    if not args:
+        anos = [2025]
+    elif len(args) == 1:
+        anos = [int(args[0])]
+    else:
+        anos = range(min(int(args[0]), int(args[1])), max(int(args[0]), int(args[1])) + 1)
 
-    # Se o usuário passou apenas 1 argumento (ex: python main.py 2024)
-    if len(sys.argv) == 2:
-        ano_inicio = int(sys.argv[1])
-        ano_fim = ano_inicio
-        
-    # Se o usuário passou 2 argumentos (ex: python main.py 2020 2024)
-    elif len(sys.argv) >= 3:
-        # Usamos min e max para garantir que o menor ano seja sempre o início
-        ano_inicio = min(int(sys.argv[1]), int(sys.argv[2]))
-        ano_fim = max(int(sys.argv[1]), int(sys.argv[2]))
+    print(f"Iniciando extração para: {list(anos)}")
 
-    print(f"Iniciando extração paralela para o período de {ano_inicio} a {ano_fim}...")
-
-    # Loop que passa por cada ano do intervalo
-    for ano_atual in range(ano_inicio, ano_fim + 1):
-        print(f"\n[{ano_atual}] - Iniciando processamento do ano...")
-        executar_pipeline(ano_atual)
-        print(f"[{ano_atual}] - Processamento concluído!")
-
-    print("\nProcesso total finalizado com sucesso!")
+    for ano in anos:
+        executar_pipeline(ano)
+        print(f"[{ano}] Processamento concluído!")
