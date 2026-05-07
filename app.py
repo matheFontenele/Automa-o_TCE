@@ -7,16 +7,38 @@ st.set_page_config(page_title="Automação TCE-CE", layout="wide")
 # Estilização para o Menu Superior
 st.markdown("""
     <style>
-    .stButton > button {
-        width: 100%;
-        border-radius: 5px;
-        height: 3em;
-        background-color: #f0f2f6;
+    /* Seletor universal para botões de navegação e botões do Streamlit */
+    div.stButton > button {
+        width: 100% !important;
+        border-radius: 8px !important;
+        height: 3.5em !important;
+        background-color: #1E1E24 !important; /* Grafite Profundo */
+        color: #FFFFFF !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        font-weight: 600 !important;
+        font-size: 16px !important;
+        transition: all 0.3s ease-in-out !important;
     }
-    /* Estilo para quando o botão estiver selecionado (simulado via cor de destaque) */
-    .highlight {
-        border: 2px solid #ff4b4b !important;
-        font-weight: bold;
+
+    /* Hover: Efeito vermelho suave na borda */
+    div.stButton > button:hover {
+        background-color: #2D2D35 !important;
+        border-color: #ff4b4b !important;
+        color: #ff4b4b !important;
+    }
+
+    /* Botão Primário (Ativo): Fundo Vermelho */
+    div.stButton > button[kind="primary"] {
+        background-color: #ff4b4b !important;
+        color: white !important;
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(255, 75, 75, 0.4) !important;
+    }
+    
+    /* Remove o contorno azul de foco que o Chrome/Streamlit coloca */
+    button:focus:not(:active) {
+        border-color: #ff4b4b !important;
+        color: #ff4b4b !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -27,7 +49,7 @@ if 'modo_tela' not in st.session_state:
 
 # Layout de Menu Superior
 st.title("🚀 Painel de Automação TCE-CE")
-col_nav1, col_nav2, col_spacer = st.columns([1, 1, 4])
+col_nav1, col_nav2, col_spacer = st.columns([1.2, 1.2, 5])
 
 with col_nav1:
     if st.button("📊 Extração", key="btn_ext", 

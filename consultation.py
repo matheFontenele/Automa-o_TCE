@@ -109,24 +109,71 @@ def render_consultation_page():
                 id_doc, entidade, detalhe, valor, label = f"NF: {row['numero_nota_fiscal']}", f"Emitente: {row['cpf_cnpj_emitente']}", f"Empenho: {row['numero_empenho']}", row['valor_bruto'], "Bruto (R$)"
 
             # HTML do CARD de Itens
-            st.markdown(f"""
-                <div class="report-card">
-                    <div style="display: flex; justify-content: space-between; align-items: stretch;">
-                        <div style="flex: 3; border-right: 1px solid rgba(128,128,128,0.3); padding-right: 25px;">
-                            <div class="card-header">{id_doc}</div>
-                            <div class="card-vendor">{entidade}</div>
-                            <div class="card-org">📍 {row['municipio_referencia']}</div>
-                            <div style="font-size: 0.9rem; line-height: 1.6; opacity: 0.9; margin-top: 10px; color: var(--text-color);">
-                                {str(detalhe)[:280] + '...' if len(str(detalhe)) > 280 else detalhe}
-                            </div>
-                        </div>
-                        <div style="flex: 1.2; text-align: right; padding-left: 25px; display: flex; flex-direction: column; justify-content: center; background-color: rgba(128,128,128,0.03); border-radius: 0 8px 8px 0;">
-                            <div style="font-size: 0.75rem; opacity: 0.7; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">{label}</div>
-                            <div class="card-value">R$ {valor:,.2f}</div>
-                            <div style="margin-top: 15px;"><a href="#" class="btn-fake">🔍 DETALHES</a></div>
-                        </div>
-                    </div>
-                </div>
+            st.markdown("""
+                <style>
+                .report-card {
+                    background-color: #FFFFFF; /* Fundo branco para contraste total no tema escuro/claro */
+                    border: 1px solid rgba(0, 0, 0, 0.1); 
+                    border-radius: 12px;
+                    padding: 24px;
+                    margin-bottom: 20px; 
+                    border-left: 8px solid #ff4b4b;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+                    color: #1E1E24 !important; /* Texto sempre escuro para legibilidade */
+                    transition: transform 0.2s ease, box-shadow 0.2s ease;
+                }
+
+                .report-card:hover {
+                    transform: translateY(-4px);
+                    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
+                    border-color: #ff4b4b;
+                }
+
+                .card-header { 
+                    color: #666; 
+                    font-weight: 700; 
+                    font-size: 0.7rem; 
+                    text-transform: uppercase; 
+                    letter-spacing: 1px;
+                }
+                
+                .card-vendor { 
+                    font-size: 1.15rem; 
+                    font-weight: 800; 
+                    color: #1E1E24;
+                    margin: 5px 0;
+                }
+
+                .card-org { 
+                    font-size: 0.85rem; 
+                    color: #ff4b4b; 
+                    font-weight: 600;
+                    margin-bottom: 12px;
+                }
+
+                .card-value { 
+                    font-family: 'Roboto Mono', monospace; 
+                    font-weight: 800; 
+                    color: #15803d; /* Verde escuro mais legível */
+                    font-size: 1.6rem; 
+                }
+
+                .btn-fake {
+                    background-color: #1E1E24;
+                    color: white !important;
+                    padding: 10px 20px;
+                    border-radius: 6px;
+                    text-decoration: none;
+                    font-size: 12px;
+                    font-weight: bold;
+                    transition: 0.3s;
+                }
+
+                .btn-fake:hover {
+                    background-color: #ff4b4b;
+                    box-shadow: 0 4px 8px rgba(255, 75, 75, 0.3);
+                }
+                </style>
             """, unsafe_allow_html=True)
 
         if len(df) > limite:
