@@ -1,11 +1,17 @@
 services:
+  # Container Streamlit (Font End)
   app:
     build: .
-    container_name: automacao-tce
+    volumes:
+      - ./data:/app/data
     ports:
       - "8501:8501"
+
+  # Container para extração em massa (Rodando por terminal)
+  extrator:
+    build: .
     volumes:
-      - .:/app
       - ./data:/app/data
-      - /app/venv
-    restart: unless-stopped
+    # Aqui você define o comando para baixar o intervalo que deseja
+    command: python main.py 2024 2026
+    restart: "no"

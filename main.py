@@ -103,6 +103,10 @@ def executar_pipeline(ano, mes_selecionado=None, municipio_selecionado=None, log
         return
 
     log_func(f"[{ano}] Total de tarefas: {len(tarefas)}")
+
+    baixados = 0
+    ignorados = 0
+    erros = 0
     
     # Execução Paralela
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -111,12 +115,15 @@ def executar_pipeline(ano, mes_selecionado=None, municipio_selecionado=None, log
 
         # Contabilizando os resultados
         for res in resultados:
-            if res == "BAIXADO": baixados += 1
-            elif res == "IGNORADO": ignorados += 1
-            else: erros += 1
+            if res == "BAIXADO":
+                 baixados += 1
+            elif res == "IGNORADO":
+                 ignorados += 1
+            else:
+                 erros += 1
 
         log_func(f"[{ano}] Resumo: {baixados} novos, {ignorados} já existiam, {erros} falhas/vazios.")
-        
+
 # Função principal para execução direta
 if __name__ == "__main__":
     # Valores padrão de segurança
