@@ -105,27 +105,6 @@ def render_extraction_page():
 
                     st.success(f"Sucesso! {len(df)} registros totais.")
 
-                    # --- FILTROS INTERNOS ---
-                    st.divider()
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        if 'municipio_referencia' in df.columns:
-                            mun_filter = st.multiselect("Filtrar por Município no Resultado:", options=sorted(df['municipio_referencia'].unique()))
-                            if mun_filter:
-                                df = df[df['municipio_referencia'].isin(mun_filter)]
-
-                    with col2:
-                        # Filtro de busca textual geral
-                        busca = st.text_input("Busca rápida (CPF, CNPJ, Nome...):")
-                        if busca:
-                            # Filtra em todas as colunas
-                            df = df[df.apply(lambda row: row.astype(str).str.contains(busca, case=False).any(), axis=1)]
-
-                    st.info(f"Exibindo {min(1000, len(df))} de {len(df)} registros filtrados.")
-                    st.dataframe(df.head(1000), use_container_width=True)
-                    # ------------------------------
-
                     # Download do arquivo filtrado
                     st.download_button(
                         label="Baixar resultado atual (CSV)",
