@@ -56,29 +56,43 @@ def render_extraction_page():
 
         # 2. Configurar wildcards
         ano_str = "*" if ano == "Todos" else str(ano)
-        mes_str = "*" if mes == "Todos" else str(mes).zfill(2)
+        
+        if mes == "Todos":
+            mes_str = "*" 
+        else:
+            # Garante que 1 vire "01" para bater com o nome do arquivo
+            mes_str = str(mes).zfill(2)
         
         if mun == "Todos":
             mun_str = "*"
         else:
+            # Extrai apenas o número entre parênteses, ex: (043) -> 043
             match = re.search(r'\((\d+)\)', mun)
             mun_str = match.group(1) if match else "*"
 
-        # 3. Determinar o padrão de nome
-        # Se for itens de notas fiscais ou algo sem mês no nome, ajusta o padrão
+        # 3. Determinar o padrão de nome (Glob)
         if "itens_notas_fiscais" in tipo_arquivo_prefixo:
-            padrao = os.path.join('data', f"{tipo_arquivo_prefixo}_{ano_str}_{mun_str}.parquet")
+            # Itens não tem mês no nome
+            nome_busca = f"{tipo_arquivo_prefixo}_{ano_str}_{mun_str}.parquet"
         else:
-            padrao = os.path.join('data', f"{tipo_arquivo_prefixo}_{ano_str}_{mes_str}_{mun_str}.parquet")
+            # Padrão: prefixo_ano_mes_municipio.parquet
+            nome_busca = f"{tipo_arquivo_prefixo}_{ano_str}_{mes_str}_{mun_str}.parquet"
 
+        padrao = os.path.join('data', nome_busca)
+        
+        # O glob.glob precisa do caminho absoluto ou relativo correto
         arquivos = glob.glob(padrao)
 
         with st.expander("Ver detalhes da busca"):
-            st.write(f"Padrão: `{padrao}`")
-            st.write(f"Arquivos encontrados: {len(arquivos)}")
+            st.write(f"Buscando por: `{nome_busca}`")
+            st.write(f"Caminho completo: `{padrao}`")
+            st.write(f"Arquivos encontrados no disco: {len(arquivos)}")
+            if len(arquivos) > 0:
+                st.write("Exemplos encontrados:", arquivos[:3])
 
         if not arquivos:
-            st.warning("Nenhum arquivo encontrado.")
+            st.warning(f"Nenhum arquivo de {tipo_arquivo_prefixo} encontrado para os filtros selecionados.")
+            st.info("Dica: Verifique se o Ano Base e o Município conferem com o que você baixou no terminal.")
             return
 
         # 4. Botão de carga
