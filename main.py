@@ -18,23 +18,23 @@ def processar_lote(task):
     
     # Checkpoint: se o arquivo já existe, pula
     if os.path.exists(caminho_arquivo):
-        return None
+        return "IGNORADO"
 
     try:
         response = requests.get(task['url'], headers={"Accept": "application/json"}, params=task['params'], timeout=30)
         if response.status_code == 200:
             dados = response.json().get("elements", [])
             if dados:
-                # Adiciona metadado de município se necessário
                 for item in dados:
                     item['municipio_referencia'] = task['municipio_nome']
                 
                 df = pd.DataFrame(dados)
+                # Salvando em Parquet para performance e economia de espaço
                 df.to_parquet(caminho_arquivo, engine='pyarrow', compression='snappy')
-                return True
-        return False
+                return "BAIXADO"
+        return "VAZIO"
     except Exception:
-        return False
+        return "ERRO_CONEXAO"
 
 def gerar_tarefas(ano, mes_selecionado, municipio_selecionado):
     """Gera a lista de tarefas baseada nos filtros aplicados."""
@@ -106,21 +106,41 @@ def executar_pipeline(ano, mes_selecionado=None, municipio_selecionado=None, log
     
     # Execução Paralela
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        list(tqdm(executor.map(processar_lote, tarefas), total=len(tarefas), desc=f"Baixando {ano}"))
+        # Usamos tqdm para barra de progresso no terminal
+        resultados = list(tqdm(executor.map(processar_lote, tarefas), total=len(tarefas), desc=f"Baixando {ano}"))
 
+        # Contabilizando os resultados
+        for res in resultados:
+            if res == "BAIXADO": baixados += 1
+            elif res == "IGNORADO": ignorados += 1
+            else: erros += 1
 
+        log_func(f"[{ano}] Resumo: {baixados} novos, {ignorados} já existiam, {erros} falhas/vazios.")
+        
 # Função principal para execução direta
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    if not args:
-        anos = [2025]
-    elif len(args) == 1:
-        anos = [int(args[0])]
-    else:
-        anos = range(min(int(args[0]), int(args[1])), max(int(args[0]), int(args[1])) + 1)
+    # Valores padrão de segurança
+    ano_inicio = 2025
+    ano_fim = 2025
 
-    print(f"Iniciando extração para: {list(anos)}")
+    # Se o usuário passou apenas 1 argumento (ex: python main.py 2024)
+    if len(sys.argv) == 2:
+        ano_inicio = int(sys.argv[1])
+        ano_fim = ano_inicio
+        
+    # Se o usuário passou 2 argumentos (ex: python main.py 2020 2025)
+    elif len(sys.argv) >= 3:
+        # Usamos min e max para garantir que o menor ano seja sempre o início, 
+        # mesmo que você digite invertido no terminal
+        ano_inicio = min(int(sys.argv[1]), int(sys.argv[2]))
+        ano_fim = max(int(sys.argv[1]), int(sys.argv[2]))
 
-    for ano in anos:
-        executar_pipeline(ano)
-        print(f"[{ano}] Processamento concluído!")
+    print(f"Iniciando extração paralela para o período de {ano_inicio} a {ano_fim}...")
+
+    # Loop que passa por cada ano do intervalo (o +1 garante que o último ano seja incluído)
+    for ano_atual in range(ano_inicio, ano_fim + 1):
+        print(f"\n[{ano_atual}] - Iniciando processamento do ano...")
+        executar_pipeline(ano_atual)
+        print(f"[{ano_atual}] - Processamento concluído!")
+
+    print("\nProcesso total finalizado com sucesso!")

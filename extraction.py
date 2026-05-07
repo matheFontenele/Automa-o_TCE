@@ -7,10 +7,10 @@ from main import executar_pipeline, carregar_municipios
 
 # Mapeamento para garantir que o nome da aba encontre o arquivo correto no disco
 DATA_MAP = {
-    "Notas de Empenho": "notas_empenho",
+    "Notas de Empenho": "notas_empenhos",
     "Notas Fiscais": "notas_fiscais",
     "Notas de Pagamento": "notas_pagamentos",
-    "Pagamento e Liquidações": "pagamento_e_liquidacoes",
+    "Pagamento e Liquidações": "pagamento_liquidacoes",
     "Liquidações": "liquidacoes",
     "Itens de Notas Fiscais": "itens_notas_fiscais"
 }
