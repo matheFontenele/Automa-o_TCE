@@ -7,10 +7,10 @@ from main import executar_pipeline, carregar_municipios
 
 # Mapeamento para garantir que o nome da aba encontre o arquivo correto no disco
 DATA_MAP = {
-    "Notas de Empenho": "notas_empenhos",
+    "Notas de Empenho": "notas_empenho",
     "Notas Fiscais": "notas_fiscais",
     "Notas de Pagamento": "notas_pagamentos",
-    "Pagamento e Liquidações": "pagamento_liquidacoes",
+    "Pagamento e Liquidações": "pagamento_e_liquidacoes",
     "Liquidações": "liquidacoes",
     "Itens de Notas Fiscais": "itens_notas_fiscais"
 }
@@ -90,16 +90,33 @@ def render_extraction_page():
                     df = df.astype(str)
 
                     st.success(f"Sucesso! {len(df)} registros totais.")
-                    
-                    # Exibir apenas o cabeçalho para não travar o navegador
-                    st.info("Exibindo visualização das primeiras 1000 linhas.")
-                    st.dataframe(df.head(1000), use_container_width=True)
 
-                    # Download do arquivo completo
+                    # --- FILTROS INTERNOS ---
+                    st.divider()
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if 'municipio_referencia' in df.columns:
+                            mun_filter = st.multiselect("Filtrar por Município no Resultado:", options=sorted(df['municipio_referencia'].unique()))
+                            if mun_filter:
+                                df = df[df['municipio_referencia'].isin(mun_filter)]
+
+                    with col2:
+                        # Filtro de busca textual geral
+                        busca = st.text_input("Busca rápida (CPF, CNPJ, Nome...):")
+                        if busca:
+                            # Filtra em todas as colunas
+                            df = df[df.apply(lambda row: row.astype(str).str.contains(busca, case=False).any(), axis=1)]
+
+                    st.info(f"Exibindo {min(1000, len(df))} de {len(df)} registros filtrados.")
+                    st.dataframe(df.head(1000), use_container_width=True)
+                    # ------------------------------
+
+                    # Download do arquivo filtrado
                     st.download_button(
-                        label="Baixar consolidado COMPLETO (CSV)",
+                        label="Baixar resultado atual (CSV)",
                         data=df.to_csv(index=False, sep=';').encode('utf-8-sig'),
-                        file_name=f"export_{tipo_arquivo_prefixo}.csv",
+                        file_name=f"filtro_{tipo_arquivo_prefixo}.csv",
                         mime='text/csv'
                     )
                 except Exception as e:
