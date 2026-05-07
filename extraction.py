@@ -54,66 +54,76 @@ def render_extraction_page():
         mes = st.session_state.mes_input
         mun = st.session_state.mun_input
 
-        # 2. Configurar wildcards
-        ano_str = "*" if ano == "Todos" else str(ano)
+        # 2. Configurar wildcards (Ajustado para ser mais flexível)
+        ano_str = str(ano) if ano != "Todos" else "*"
         
         if mes == "Todos":
             mes_str = "*" 
         else:
-            # Garante que 1 vire "01" para bater com o nome do arquivo
             mes_str = str(mes).zfill(2)
         
+        # O segredo está aqui: se for "Todos", usamos um padrão que aceita qualquer final
         if mun == "Todos":
-            mun_str = "*"
+            mun_pattern = "*"
         else:
-            # Extrai apenas o número entre parênteses, ex: (043) -> 043
             match = re.search(r'\((\d+)\)', mun)
-            mun_str = match.group(1) if match else "*"
+            mun_pattern = match.group(1) if match else "*"
 
         # 3. Determinar o padrão de nome (Glob)
+        # Ajustamos para aceitar arquivos que podem ou não ter o código do município no fim
         if "itens_notas_fiscais" in tipo_arquivo_prefixo:
-            # Itens não tem mês no nome
-            nome_busca = f"{tipo_arquivo_prefixo}_{ano_str}_{mun_str}.parquet"
+            nome_busca = f"{tipo_arquivo_prefixo}_{ano_str}_{mun_pattern}.parquet"
         else:
-            # Padrão: prefixo_ano_mes_municipio.parquet
-            nome_busca = f"{tipo_arquivo_prefixo}_{ano_str}_{mes_str}_{mun_str}.parquet"
+            # Tenta encontrar o padrão completo: prefixo_ano_mes_municipio.parquet
+            nome_busca = f"{tipo_arquivo_prefixo}_{ano_str}_{mes_str}_{mun_pattern}.parquet"
 
         padrao = os.path.join('data', nome_busca)
-        
-        # O glob.glob precisa do caminho absoluto ou relativo correto
         arquivos = glob.glob(padrao)
 
-        with st.expander("Ver detalhes da busca"):
+        # SE NÃO ENCONTRAR COM O CÓDIGO DO MUNICIPIO, tenta uma busca mais genérica
+        if not arquivos:
+            nome_busca_generica = f"{tipo_arquivo_prefixo}_{ano_str}_{mes_str}*.parquet"
+            padrao = os.path.join('data', nome_busca_generica)
+            arquivos = glob.glob(padrao)
+
+        with st.expander("Ver detalhes da busca", expanded=False):
             st.write(f"Buscando por: `{nome_busca}`")
-            st.write(f"Caminho completo: `{padrao}`")
-            st.write(f"Arquivos encontrados no disco: {len(arquivos)}")
-            if len(arquivos) > 0:
-                st.write("Exemplos encontrados:", arquivos[:3])
+            st.write(f"Arquivos encontrados: {len(arquivos)}")
+            if arquivos:
+                st.write("Caminhos encontrados:", arquivos[:5])
 
         if not arquivos:
-            st.warning(f"Nenhum arquivo de {tipo_arquivo_prefixo} encontrado para os filtros selecionados.")
-            st.info("Dica: Verifique se o Ano Base e o Município conferem com o que você baixou no terminal.")
+            st.warning(f"Nenhum arquivo encontrado para `{tipo_arquivo_prefixo}` com esses filtros.")
             return
 
-        # 4. Botão de carga
-        if st.button(f"Carregar {len(arquivos)} arquivos", key=f"btn_{tipo_arquivo_prefixo}"):
-            with st.spinner("Consolidando..."):
+        # 4. CARREGAMENTO E VISUALIZAÇÃO DO DATAFRAME
+        # Criamos um container para o DataFrame não sumir após o clique
+        if st.button(f"📊 Visualizar {len(arquivos)} arquivos de {tipo_arquivo_prefixo}", key=f"btn_{tipo_arquivo_prefixo}"):
+            with st.spinner("Consolidando dados..."):
                 try:
+                    # Carrega todos os arquivos encontrados
                     df_lista = [pd.read_parquet(f) for f in arquivos]
                     df = pd.concat(df_lista, ignore_index=True)
-                    df = df.astype(str)
+                    
+                    st.success(f"Foram consolidados {len(df):,} registros.")
+                    
+                    # Formatação para exibição
+                    # Limitamos a 500 linhas na visualização para não travar o navegador, mas o download é completo
+                    st.dataframe(df.head(500), use_container_width=True)
+                    
+                    if len(df) > 500:
+                        st.info("💡 Mostrando apenas as primeiras 500 linhas. Use o botão abaixo para baixar o arquivo completo.")
 
-                    st.success(f"Sucesso! {len(df)} registros totais.")
-
-                    # Download do arquivo filtrado
+                    # Botão de Download
                     st.download_button(
-                        label="Baixar resultado atual (CSV)",
-                        data=df.to_csv(index=False, sep=';').encode('utf-8-sig'),
-                        file_name=f"filtro_{tipo_arquivo_prefixo}.csv",
-                        mime='text/csv'
+                        label="📥 Baixar Base Consolidada (CSV)",
+                        data=df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig'),
+                        file_name=f"consolidado_{tipo_arquivo_prefixo}_{ano}.csv",
+                        mime='text/csv',
+                        use_container_width=True
                     )
                 except Exception as e:
-                    st.error(f"Erro ao carregar: {e}")
+                    st.error(f"Erro ao processar arquivos: {e}")
 
     # Criação dinâmica das abas usando o dicionário
     abas = st.tabs(list(DATA_MAP.keys()))
