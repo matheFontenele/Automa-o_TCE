@@ -7,53 +7,41 @@ import os
 st.markdown("""
     <style>
     .report-card {
-        background-color: #ffffff;
-        border: 1px solid #dee2e6;
-        border-radius: 4px;
-        padding: 12px;
-        margin-bottom: 10px;
-        border-left: 6px solid #1c3d6e;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
+        background-color: #1e1e1e; /* Fundo escuro para combinar com seu tema */
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 15px;
+        border-left: 6px solid #ff4b4b; /* Cor de destaque do Streamlit */
+        transition: transform 0.2s;
+    }
+    .report-card:hover {
+        border-color: #ff4b4b;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
     .card-header { 
-        color: #1c3d6e; 
+        color: #ff4b4b; 
         font-weight: bold; 
-        font-size: 13px; 
-        text-transform: uppercase;
-        margin-bottom: 4px;
+        font-size: 0.85rem; 
+        letter-spacing: 1px;
     }
     .card-vendor { 
-        color: #333; 
-        font-weight: 700;
-        font-size: 14px; 
-        margin-bottom: 2px;
+        color: #ffffff; 
+        font-size: 1.1rem; 
+        font-weight: 600;
+        margin: 5px 0;
     }
-    .card-body { 
-        color: #666;
-        font-size: 12px; 
-        line-height: 1.4;
-    }
-    .card-value-label {
-        font-size: 10px;
-        color: #888;
-        text-align: right;
-        text-transform: uppercase;
+    .card-org {
+        color: #aaa;
+        font-size: 0.9rem;
+        margin-bottom: 10px;
     }
     .card-value { 
+        font-family: 'Roboto Mono', monospace;
         font-weight: bold; 
         color: #28a745; 
-        font-size: 16px;
-        text-align: right; 
-    }
-    .view-btn {
-        background-color: #1c3d6e;
-        color: white;
-        border: none;
-        padding: 4px 8px;
-        border-radius: 3px;
-        font-size: 11px;
-        float: right;
-        margin-top: 5px;
+        font-size: 1.3rem;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -139,24 +127,27 @@ def render_consultation_page():
             # HTML do Card Estilizado
             st.markdown(f"""
                 <div class="report-card">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                        <div style="flex: 3;">
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div style="flex: 3; padding-right: 20px;">
                             <div class="card-header">{id_doc}</div>
                             <div class="card-vendor">{entidade}</div>
-                            <div class="card-body">
-                                <b>Órgão/Unidade:</b> {row['codigo_orgao']} - {row['municipio_referencia']}<br>
-                                <i>{str(detalhe)[:250] + '...' if len(str(detalhe)) > 250 else detalhe}</i>
-                            </div>
-                        </div>
-                        <div style="flex: 1; text-align: right;">
-                            <div class="card-value-label">{label_v}</div>
-                            <div class="card-value">{valor_principal:,.2f}</div>
-                            <div style="margin-top: 15px;">
-                                <span style="font-size: 18px; color: #1c3d6e; cursor: pointer;">👁️</span>
+                            <div class="card-org">📍 {row['municipio_referencia']}</div>
+                            <div style="color: #ddd; font-size: 0.85rem; line-height: 1.5;">
+                                {str(detalhe)[:300] + '...' if len(str(detalhe)) > 300 else detalhe}
                             </div>
                         </div>
                     </div>
+                    <div style="flex: 1; text-align: right; border-left: 1px solid #333; padding-left: 20px;">
+                        <div style="font-size: 0.7rem; color: #888; text-transform: uppercase;">{label_v}</div>
+                        <div class="card-value">R$ {valor_principal:,.2f}</div>
+                        <div style="margin-top: 20px;">
+                        <span style="background: #333; padding: 5px 10px; border-radius: 4px; font-size: 12px; color: #fff;">
+                            🔍 Detalhes
+                        </span>
+                    </div>
                 </div>
+            </div>
+        </div>
             """, unsafe_allow_html=True)
 
         if len(df) > limite_exibicao:
