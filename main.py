@@ -31,10 +31,16 @@ def processar_lote(task):
                 df = pd.DataFrame(dados)
                 # Salvando em Parquet para performance e economia de espaço
                 df.to_parquet(caminho_arquivo, engine='pyarrow', compression='snappy')
+                log_func(f"✅ Criado com sucesso: {nome_arquivo}")
                 return "BAIXADO"
+
+        # Se a requisição veio 200 mas o TCE não retornou nenhum dado (vazio)        
         return "VAZIO"
+        log_func(f"⚠️ Vazio: {nome_arquivo} - Resposta 200 mas sem dados.")
+
     except Exception:
         return "ERRO_CONEXAO"
+        log_func(f"❌ Erro HTTP {response.status_code} em: {nome_arquivo}")
 
 def gerar_tarefas(ano, mes_selecionado, municipio_selecionado):
     """Gera a lista de tarefas baseada nos filtros aplicados."""

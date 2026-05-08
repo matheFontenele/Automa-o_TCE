@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import glob
 import re
+import time
 from main import executar_pipeline, carregar_municipios
 
 # Mapeamento para garantir que o nome da aba encontre o arquivo correto no disco
@@ -16,6 +17,12 @@ DATA_MAP = {
 }
 
 def render_extraction_page():
+    # --- INICIALIZAÇÃO DO ESTADO GLOBAL DOS LOGS E ARQUIVOS ---
+    if 'log_messages' not in st.session_state:
+        st.session_state.log_messages = []
+    if 'arquivos_criados' not in st.session_state:
+        st.session_state.arquivos_criados = []
+
     # --- SIDEBAR (CONFIGURAÇÕES) ---
     with st.sidebar:
         st.header("Configurações")
@@ -50,24 +57,76 @@ def render_extraction_page():
             options=["Todos"] + list(range(1, 13))
         )
 
-        if st.button("Executar Extração"):
-            log_container = st.empty()
-            log_messages = []
+        # Botão para Executar a Extração
+        btn_extrair = st.button("Executar Extração", use_container_width=True)
+
+        # --- ÁREA DE LOGS E ARQUIVOS CRIADOS NA SIDEBAR ---
+        log_placeholder = st.empty()
+
+        if btn_extrair:
+            # Reseta os logs e a lista de arquivos criados
+            st.session_state.log_messages = []
+            st.session_state.arquivos_criados = []
             
+            # Marca o timestamp de início para sabermos quais arquivos foram criados NESTA rodada
+            inicio_extracao = time.time()
+            
+            # Função de callback chamada pelo pipeline
             def stream_log(msg):
-                log_messages.append(msg)
-                log_container.code("\n".join(log_messages[-50:]))
+                st.session_state.log_messages.append(msg)
+                
+                # Monitora a pasta 'data' em busca de novos arquivos parquet criados após o início_extracao
+                arquivos_atuais = []
+                if os.path.exists('data'):
+                    for f in glob.glob(os.path.join('data', '*.parquet')):
+                        # Se o arquivo foi modificado/criado após o início da extração
+                        if os.path.getmtime(f) >= inicio_extracao:
+                            nome_arq = os.path.basename(f)
+                            if nome_arq not in arquivos_atuais:
+                                arquivos_atuais.append(nome_arq)
+                
+                st.session_state.arquivos_criados = sorted(arquivos_atuais)
+
+                # Atualiza a interface gráfica em tempo real
+                with log_placeholder.container():
+                    st.caption("🪵 Logs de Extração (Tempo Real)")
+                    st.code("\n".join(st.session_state.log_messages[-50:]), language="text")
+                    
+                    if st.session_state.arquivos_criados:
+                        st.caption("📁 Arquivos criados no disco:")
+                        for arq in st.session_state.arquivos_criados:
+                            st.markdown(f"🔹 `{arq}`")
 
             municipio_selecionado = None if st.session_state.mun_input == "Todos" else opcoes_mun[st.session_state.mun_input]
             
             with st.spinner("Buscando dados no TCE..."):
-                executar_pipeline(
-                    st.session_state.ano_input, 
-                    mes_selecionado=st.session_state.mes_input, 
-                    municipio_selecionado=municipio_selecionado, 
-                    log_func=stream_log
-                )
-                st.success("Extração concluída!")
+                try:
+                    executar_pipeline(
+                        st.session_state.ano_input, 
+                        mes_selecionado=st.session_state.mes_input, 
+                        municipio_selecionado=municipio_selecionado, 
+                        log_func=stream_log
+                    )
+                    st.success("Extração concluída com sucesso!")
+                except Exception as e:
+                    st.error(f"Erro durante a extração: {e}")
+        
+        # Mantém visível os logs e arquivos da última extração se o usuário navegar pelo app
+        elif st.session_state.log_messages:
+            with log_placeholder.container():
+                # Mostra os arquivos que foram criados na última rodada
+                if st.session_state.arquivos_criados:
+                    st.subheader("📁 Últimos Arquivos Salvos")
+                    for arq in st.session_state.arquivos_criados:
+                        st.markdown(f"✅ `{arq}`")
+                    st.divider()
+
+                with st.expander("🪵 Ver Histórico de Logs", expanded=False):
+                    st.code("\n".join(st.session_state.log_messages), language="text")
+                    if st.button("Limpar Logs e Histórico", key="clear_logs"):
+                        st.session_state.log_messages = []
+                        st.session_state.arquivos_criados = []
+                        st.rerun()
 
     # --- ÁREA PRINCIPAL ---
     st.header("Visualizar Dados")
@@ -147,7 +206,6 @@ def render_extraction_page():
                 col_pag1, col_pag2, col_pag3 = st.columns([1, 2, 1])
 
                 with col_pag1:
-                    # Só habilita o botão "Anterior" se não estiver na página 1
                     btn_anterior = st.button(
                         "⬅️ Anterior", 
                         key=f"prev_{tipo_arquivo_prefixo}", 
@@ -167,7 +225,6 @@ def render_extraction_page():
                     )
 
                 with col_pag3:
-                    # Só habilita o botão "Próximo" se não for a última página
                     btn_proximo = st.button(
                         "Próximo ➡️", 
                         key=f"next_{tipo_arquivo_prefixo}", 
