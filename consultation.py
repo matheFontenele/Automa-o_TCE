@@ -53,6 +53,18 @@ CSS_CARDS = """
         text-transform: uppercase;
     }
 
+    .status-badge {
+        font-size: 0.7rem;
+        font-weight: bold;
+        padding: 2px 10px;
+        border-radius: 20px;
+        text-transform: uppercase;
+        margin-left: 8px;
+    }
+    .status-pago { background-color: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .status-parcial { background-color: #fef9c3; color: #a16207; border: 1px solid #fef08a; }
+    .status-pendente { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
+
     .card-vendor { 
         font-size: 1.2rem; 
         font-weight: 800; 
@@ -227,10 +239,19 @@ def render_consultation_page():
     opcoes_mun = {f"{m['nome_municipio']} ({m['codigo_municipio']})": m for m in lista_municipios}
 
     with st.expander("Opções de Filtro", expanded=True):
-        col_ano, col_tipo, col_mun = st.columns(3)
-        ano_sel = col_ano.selectbox("Ano", [2020, 2021, 2022, 2023, 2024, 2025, 2026], index=5)
-        categoria_sel = col_tipo.selectbox("Tipo de Documento", ["Notas de Empenho", "Notas Fiscais", "Notas de Pagamento"])
-        municipio_sel = col_mun.selectbox("Município", options=["Todos"] + list(opcoes_mun.keys()))
+        categoria_sel = st.selectbox("Tipo de Documento", ["Notas de Empenho", "Notas Fiscais", "Notas de Pagamento"])
+        
+        # Grid dinâmico baseado na categoria selecionada
+        if categoria_sel == "Notas de Empenho":
+            col_ano, col_mun, col_pag = st.columns(3)
+            ano_sel = col_ano.selectbox("Ano", [2020, 2021, 2022, 2023, 2024, 2025, 2026], index=5)
+            municipio_sel = col_mun.selectbox("Município", options=["Todos"] + list(opcoes_mun.keys()))
+            pagamento_sel = col_pag.selectbox("Filtro de Pagamento", ["TODOS", "PENDENTE", "PARCIAL", "PAGO"])
+        else:
+            col_ano, col_mun = st.columns(2)
+            ano_sel = col_ano.selectbox("Ano", [2020, 2021, 2022, 2023, 2024, 2025, 2026], index=5)
+            municipio_sel = col_mun.selectbox("Município", options=["Todos"] + list(opcoes_mun.keys()))
+            pagamento_sel = "TODOS" # Default para outras categorias
         
         col_busca, col_botao = st.columns([8, 2])
         filtro_geral = col_busca.text_input(
@@ -309,6 +330,27 @@ def render_consultation_page():
                     df['valor_liquidado'] = df['chave_composta'].map(liq_map).fillna(0.0)
                     df['valor_pago'] = df['chave_composta'].map(pag_map).fillna(0.0)
 
+                    # ==============================================================================
+                    # LOGICA E FILTRAGEM DO STATUS DE PAGAMENTO (NOVO!)
+                    # ==============================================================================
+                    # Define o status de forma vetorizada no Pandas (super rápido!)
+                    def calcular_status_pagamento(row):
+                        emp = float(row.get('valor_empenhado', 0.0))
+                        pag = float(row.get('valor_pago', 0.0))
+                        
+                        if pag <= 0.0:
+                            return "PENDENTE"
+                        elif pag >= emp:
+                            return "PAGO"
+                        else:
+                            return "PARCIAL"
+
+                    df['status_pagamento'] = df.apply(calcular_status_pagamento, axis=1)
+
+                    # Se o usuário escolheu um filtro específico de pagamento, aplica aqui
+                    if pagamento_sel != "TODOS":
+                        df = df[df['status_pagamento'] == pagamento_sel]
+
             # Filtros de Busca Geral
             if filtro_geral and not df.empty:
                 if categoria_sel == "Notas de Empenho":
@@ -374,6 +416,12 @@ def render_consultation_page():
                 if 'match_reason' in row and row['match_reason']:
                     match_badge_html = f'<span class="match-badge">🔍 {row["match_reason"]}</span>'
 
+                # HTML Badges extras para destacar se o empenho está pago ou não de forma intuitiva
+                status_badge_html = ""
+                if categoria_sel == "Notas de Empenho" and 'status_pagamento' in row:
+                    status_class = "status-" + str(row['status_pagamento']).lower()
+                    status_badge_html = f'<span class="status-badge {status_class}">{row["status_pagamento"]}</span>'
+
                 if categoria_sel == "Notas de Empenho":
                     id_doc = f"EMPENHO: {row['numero_empenho']}"
                     entidade = row['nome_negociante']
@@ -388,6 +436,7 @@ def render_consultation_page():
                     id_doc = f"PAGAMENTO: {row['numero_nota_pagamento']}"
                     entidade = row['nome_responsavel_pagamento']
                     detalhe = f"Ref. Empenho: {row['numero_empenho']} | Doc Caixa: {row['numero_documento_caixa']}"
+                    data_item = formatar_data(row.get('data_nota_pagamento'))
                     
                     val_emp = "---"
                     val_liq = "---"
@@ -397,6 +446,7 @@ def render_consultation_page():
                     id_doc = f"NF: {row['numero_nota_fiscal']}"
                     entidade = f"Emitente: {row['cpf_cnpj_emitente']}"
                     detalhe = f"Empenho Associado: {row['numero_empenho']} | Série: {row['numero_serie']}"
+                    data_item = formatar_data(row.get('data_emissao'))
                     
                     val_emp = "---"
                     val_liq = formatar_moeda(row['valor_bruto'])
@@ -421,7 +471,7 @@ def render_consultation_page():
                 card_html = (
                     f'<div class="report-card">'
                     f'<div class="card-header-row">'
-                    f'<div class="card-header">{id_doc}</div>'
+                    f'<div class="card-header">{id_doc} {status_badge_html}</div>'
                     f'{match_badge_html}'
                     f'</div>'
                     f'<div class="card-vendor">{entidade}</div>'
