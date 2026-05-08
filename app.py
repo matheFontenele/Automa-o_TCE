@@ -49,7 +49,7 @@ if 'modo_tela' not in st.session_state:
 
 # Layout de Menu Superior
 st.title("🚀 Painel de Automação TCE-CE")
-col_nav1, col_nav2, col_spacer = st.columns([1.2, 1.2, 5])
+col_nav1, col_nav2, col_spacer = st.columns([1.0, 1.0, 5])
 
 with col_nav1:
     if st.button("📊 Extração", key="btn_ext", 
