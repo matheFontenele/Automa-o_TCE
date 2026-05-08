@@ -60,11 +60,20 @@ CSS_CARDS = """
         margin: 6px 0; 
     }
     
+    .card-meta-row {
+        display: flex;
+        gap: 16px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-bottom: 12px;
+    }
+
     .card-org { 
-        font-size: 0.85rem; 
         color: #ff4b4b; 
-        font-weight: 600; 
-        margin-bottom: 12px; 
+    }
+
+    .card-date {
+        color: #64748b;
     }
 
     .values-grid {
@@ -134,6 +143,18 @@ def formatar_moeda(valor):
         return f"{val_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except (ValueError, TypeError):
         return "0,00"
+
+def formatar_data(data_raw):
+    try:
+        if pd.isna(data_raw) or data_raw is None:
+            return "Não Informada"
+        data_str = str(data_raw).split('T')[0] # Remove possíveis frações de hora 'T00:00:00'
+        partes = data_str.split('-')
+        if len(partes) == 3:
+            return f"{partes[2]}/{partes[1]}/{partes[0]}" # Converte AAAA-MM-DD para DD/MM/AAAA
+        return data_str
+    except Exception:
+        return "Não Informada"
 
 def obter_caminho_arquivos(prefixo, ano, codigo_mun):
     if codigo_mun == "Todos":
@@ -357,6 +378,7 @@ def render_consultation_page():
                     id_doc = f"EMPENHO: {row['numero_empenho']}"
                     entidade = row['nome_negociante']
                     detalhe = row['descricao_historico_empenho']
+                    data_item = formatar_data(row.get('data_emissao_empenho'))
                     
                     val_emp = formatar_moeda(row['valor_empenhado'])
                     val_liq = formatar_moeda(row.get('valor_liquidado', 0.0))
@@ -404,6 +426,7 @@ def render_consultation_page():
                     f'</div>'
                     f'<div class="card-vendor">{entidade}</div>'
                     f'<div class="card-org">📍 {row["municipio_referencia"]}</div>'
+                    f'<span class="card-date">📅 {data_item}</span>'
                     f'<div style="font-size: 0.9rem; line-height: 1.5; color: #444; margin-top: 10px; min-height: 52px;">'
                     f'{detalhe_exibicao}'
                     f'</div>'
