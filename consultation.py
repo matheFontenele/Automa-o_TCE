@@ -5,7 +5,9 @@ import os
 import re
 from main import carregar_municipios
 
-# Definição de Estilo dos Cards (CSS) com suporte a badges e marcações de busca
+# ==============================================================================
+# CSS DOS CARDS (Otimizado e idêntico ao padrão visual do TCE)
+# ==============================================================================
 CSS_CARDS = """
 <style>
     .report-card {
@@ -13,7 +15,7 @@ CSS_CARDS = """
         border: 1px solid rgba(0, 0, 0, 0.1); 
         border-radius: 12px;
         padding: 24px;
-        margin-bottom: 20px; 
+        margin-bottom: 16px; 
         border-left: 8px solid #ff4b4b;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
         color: #1E1E24 !important;
@@ -21,9 +23,8 @@ CSS_CARDS = """
     }
 
     .report-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
-        border-color: #ff4b4b;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
     }
 
     .card-header-row {
@@ -34,11 +35,11 @@ CSS_CARDS = """
     }
 
     .card-header { 
-        color: #666; 
+        color: #64748b; 
         font-weight: 700; 
-        font-size: 0.75rem; 
+        font-size: 0.8rem; 
         text-transform: uppercase; 
-        letter-spacing: 1px; 
+        letter-spacing: 0.5px; 
     }
 
     .match-badge {
@@ -52,9 +53,53 @@ CSS_CARDS = """
         text-transform: uppercase;
     }
 
-    .card-vendor { font-size: 1.15rem; font-weight: 800; color: #1E1E24; margin: 5px 0; }
-    .card-org { font-size: 0.85rem; color: #ff4b4b; font-weight: 600; margin-bottom: 12px; }
-    .card-value { font-family: 'Roboto Mono', monospace; font-weight: 800; color: #15803d; font-size: 1.6rem; }
+    .card-vendor { 
+        font-size: 1.2rem; 
+        font-weight: 800; 
+        color: #0f172a; 
+        margin: 6px 0; 
+    }
+    
+    .card-org { 
+        font-size: 0.85rem; 
+        color: #ff4b4b; 
+        font-weight: 600; 
+        margin-bottom: 12px; 
+    }
+
+    .values-grid {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 16px;
+    }
+    
+    .value-col {
+        flex: 1;
+        background: #f8fafc;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        text-align: center;
+    }
+    
+    .value-title {
+        font-size: 0.7rem;
+        color: #64748b;
+        font-weight: 700;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    
+    .value-num {
+        font-family: 'Roboto Mono', monospace;
+        font-weight: 800;
+        font-size: 1.2rem;
+    }
+    
+    .val-empenhado { color: #0f172a; }
+    .val-liquidado { color: #2563eb; }
+    .val-pago { color: #16a34a; }
 
     mark {
         background-color: #fef08a !important;
@@ -63,22 +108,12 @@ CSS_CARDS = """
         padding: 0 2px;
         border-radius: 3px;
     }
-
-    .btn-fake {
-        background-color: #1E1E24;
-        color: white !important;
-        padding: 10px 20px;
-        border-radius: 6px;
-        text-decoration: none;
-        font-size: 12px;
-        font-weight: bold;
-        transition: 0.3s;
-        display: inline-block;
-    }
-    .btn-fake:hover { background-color: #ff4b4b; color: white !important; }
 </style>
 """
 
+# ==============================================================================
+# FUNÇÕES DE TRATAMENTO E CARREGAMENTO DE DADOS
+# ==============================================================================
 @st.cache_data(show_spinner="Consolidando base de dados...")
 def carregar_e_filtrar(arquivos):
     if not arquivos:
@@ -91,7 +126,6 @@ def carregar_e_filtrar(arquivos):
             continue
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-# Função auxiliar para formatar moeda de forma segura e no padrão PT-BR
 def formatar_moeda(valor):
     try:
         if pd.isna(valor) or valor is None:
@@ -101,18 +135,79 @@ def formatar_moeda(valor):
     except (ValueError, TypeError):
         return "0,00"
 
+def obter_caminho_arquivos(prefixo, ano, codigo_mun):
+    if codigo_mun == "Todos":
+        return sorted(glob.glob(f"data/{prefixo}_{ano}_*.parquet"))
+    return sorted(glob.glob(f"data/{prefixo}_{ano}_*_{codigo_mun}.parquet"))
+
+# ==============================================================================
+# DIALOG (MODAL) DETALHADO DO EMPENHO / ITENS
+# ==============================================================================
+@st.dialog("📋 Detalhes do Empenho", width="large")
+def exibir_modal_detalhes(row, categoria, ano, codigo_mun):
+    st.write(f"### Empenho Nº {row.get('numero_empenho', 'N/A')}")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"**Município:** {row.get('municipio_referencia', 'N/A')}")
+        st.markdown(f"**Órgão:** {row.get('codigo_orgao', 'N/A')} | Unidade: {row.get('codigo_unidade_orcamentaria', 'N/A')}")
+        if 'data_emissao_empenho' in row and pd.notna(row['data_emissao_empenho']):
+            data_format = str(row['data_emissao_empenho']).split('T')[0]
+            st.markdown(f"**Data de Emissão:** {data_format}")
+    with col2:
+        st.markdown(f"**Credor:** {row.get('nome_negociante', row.get('nome_responsavel_pagamento', 'Não Informado'))}")
+        st.markdown(f"**CPF/CNPJ:** `{row.get('numero_documento_negociante', row.get('cpf_cnpj_emitente', 'Ocultado'))}`")
+
+    st.divider()
+    st.markdown("#### 📜 Histórico / Descrição")
+    st.info(row.get('descricao_historico_empenho', 'Sem descrição adicional cadastrada.'))
+
+    st.markdown("#### 📦 Itens da Nota Fiscal")
+    arquivos_itens = obter_caminho_arquivos("itens_notas_fiscais", ano, codigo_mun)
+    
+    if arquivos_itens:
+        df_itens = carregar_e_filtrar(arquivos_itens)
+        if not df_itens.empty:
+            # Associação de itens baseada também no código do município para evitar falsos positivos
+            cod_mun_item = row.get('codigo_municipio', '')
+            itens_filtrados = df_itens[
+                (df_itens['numero_nota_empenho'] == row['numero_empenho']) & 
+                (df_itens['codigo_municipio'].astype(str) == str(cod_mun_item))
+            ]
+            
+            if not itens_filtrados.empty:
+                colunas_exibicao = {
+                    'descricao_item': 'Descrição do Item',
+                    'unidade_compra': 'Unidade',
+                    'numero_quantidade_comprada': 'Qtd',
+                    'valor_unitario_item': 'Valor Unitário',
+                    'valor_total_item': 'Valor Total'
+                }
+                df_exibir = itens_filtrados[list(colunas_exibicao.keys())].rename(columns=colunas_exibicao)
+                df_exibir['Valor Unitário'] = df_exibir['Valor Unitário'].apply(lambda x: f"R$ {formatar_moeda(x)}")
+                df_exibir['Valor Total'] = df_exibir['Valor Total'].apply(lambda x: f"R$ {formatar_moeda(x)}")
+                
+                st.dataframe(df_exibir, use_container_width=True, hide_index=True)
+            else:
+                st.warning("Nenhum item quantitativo discriminado foi anexado a este empenho.")
+        else:
+            st.warning("Base de dados de itens da NF não possui registros.")
+    else:
+        st.caption("Base de itens físicos das Notas Fiscais não localizada para este período.")
+
+# ==============================================================================
+# RENDERIZADOR DA PÁGINA
+# ==============================================================================
 def render_consultation_page():
     st.header("🔍 Consulta Detalhada")
     st.markdown(CSS_CARDS, unsafe_allow_html=True)
 
-    # Carrega a lista de municípios usando a função do main.py
     lista_municipios = carregar_municipios()
-    opcoes_mun = {f"{m['nome_municipio']} ({m['codigo_municipio']})": m['nome_municipio'] for m in lista_municipios}
+    opcoes_mun = {f"{m['nome_municipio']} ({m['codigo_municipio']})": m for m in lista_municipios}
 
-    # 1. Área de Filtros
     with st.expander("Opções de Filtro", expanded=True):
         col_ano, col_tipo, col_mun = st.columns(3)
-        ano_sel = col_ano.selectbox("Ano", [2020, 2021, 2022, 2023, 2024, 2025, 2026], index=6)
+        ano_sel = col_ano.selectbox("Ano", [2020, 2021, 2022, 2023, 2024, 2025, 2026], index=5)
         categoria_sel = col_tipo.selectbox("Tipo de Documento", ["Notas de Empenho", "Notas Fiscais", "Notas de Pagamento"])
         municipio_sel = col_mun.selectbox("Município", options=["Todos"] + list(opcoes_mun.keys()))
         
@@ -126,7 +221,6 @@ def render_consultation_page():
         col_botao.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
         btn_consultar = col_botao.button("Consultar", use_container_width=True)
 
-    # 2. Lógica de Execução
     if btn_consultar:
         mapa_prefixos = {
             "Notas de Empenho": "notas_empenho",
@@ -135,26 +229,66 @@ def render_consultation_page():
         }
 
         prefixo = mapa_prefixos[categoria_sel]
+        
+        codigo_mun_busca = "*"
+        if municipio_sel != "Todos":
+            codigo_mun_busca = opcoes_mun[municipio_sel]['codigo_municipio']
 
-        if municipio_sel == "Todos":
-            padrao_busca = f"data/{prefixo}_{ano_sel}_*.parquet"
-        else:
-            match = re.search(r'\((\d+)\)', municipio_sel)
-            codigo_mun = match.group(1) if match else "*"
-            padrao_busca = f"data/{prefixo}_{ano_sel}_*_{codigo_mun}.parquet"
-
-        arquivos = sorted(glob.glob(padrao_busca))
+        arquivos = obter_caminho_arquivos(prefixo, ano_sel, codigo_mun_busca)
 
         if arquivos:
             df = carregar_e_filtrar(arquivos)
 
             if municipio_sel != "Todos" and not df.empty and 'municipio_referencia' in df.columns:
-                nome_municipio_real = opcoes_mun[municipio_sel]
+                nome_municipio_real = opcoes_mun[municipio_sel]['nome_municipio']
                 df = df[df['municipio_referencia'].str.upper() == nome_municipio_real.upper()]
 
             if not df.empty:
                 df['match_reason'] = ""
+                
+                # ==============================================================================
+                # CRUZAMENTO DINÂMICO USANDO CHAVE COMPOSTA (CORREÇÃO DE VALORES)
+                # ==============================================================================
+                if categoria_sel == "Notas de Empenho":
+                    # Força tipos string para consistência das chaves
+                    df['codigo_municipio'] = df['codigo_municipio'].astype(str)
+                    df['codigo_orgao'] = df['codigo_orgao'].astype(str)
+                    df['numero_empenho'] = df['numero_empenho'].astype(str)
+                    
+                    # Cria a chave única do empenho
+                    df['chave_composta'] = df['codigo_municipio'] + "_" + df['codigo_orgao'] + "_" + df['numero_empenho']
+                    
+                    # Carrega as Notas Fiscais (Liquidações)
+                    arq_nf = obter_caminho_arquivos("notas_fiscais", ano_sel, codigo_mun_busca)
+                    df_nf = carregar_e_filtrar(arq_nf)
+                    liq_map = {}
+                    
+                    if not df_nf.empty:
+                        df_nf['codigo_municipio'] = df_nf['codigo_municipio'].astype(str)
+                        df_nf['codigo_orgao'] = df_nf['codigo_orgao'].astype(str)
+                        df_nf['numero_empenho'] = df_nf['numero_empenho'].astype(str)
+                        df_nf['chave_composta'] = df_nf['codigo_municipio'] + "_" + df_nf['codigo_orgao'] + "_" + df_nf['numero_empenho']
+                        
+                        liq_map = df_nf.groupby('chave_composta')['valor_bruto'].sum().to_dict()
+                        
+                    # Carrega as Notas de Pagamento
+                    arq_pg = obter_caminho_arquivos("notas_pagamentos", ano_sel, codigo_mun_busca)
+                    df_pg = carregar_e_filtrar(arq_pg)
+                    pag_map = {}
+                    
+                    if not df_pg.empty:
+                        df_pg['codigo_municipio'] = df_pg['codigo_municipio'].astype(str)
+                        df_pg['codigo_orgao'] = df_pg['codigo_orgao'].astype(str)
+                        df_pg['numero_empenho'] = df_pg['numero_empenho'].astype(str)
+                        df_pg['chave_composta'] = df_pg['codigo_municipio'] + "_" + df_pg['codigo_orgao'] + "_" + df_pg['numero_empenho']
+                        
+                        pag_map = df_pg.groupby('chave_composta')['valor_nota_pagamento'].sum().to_dict()
+                    
+                    # Mapeia de volta os agregados associados estritamente pela chave composta
+                    df['valor_liquidado'] = df['chave_composta'].map(liq_map).fillna(0.0)
+                    df['valor_pago'] = df['chave_composta'].map(pag_map).fillna(0.0)
 
+            # Filtros de Busca Geral
             if filtro_geral and not df.empty:
                 if categoria_sel == "Notas de Empenho":
                     mask_num = df['numero_empenho'].astype(str).str.contains(filtro_geral, case=False, na=False)
@@ -202,7 +336,7 @@ def render_consultation_page():
             st.subheader(f"LISTA DE {categoria_sel.upper()} - {ano_sel}")
             
             if municipio_sel != "Todos":
-                st.write(f"📍 Município selecionado: **{opcoes_mun[municipio_sel]}**")
+                st.write(f"📍 Município selecionado: **{opcoes_mun[municipio_sel]['nome_municipio']}**")
                 
             st.caption(f"Foram encontrados {len(df):,} registros.")
 
@@ -213,8 +347,8 @@ def render_consultation_page():
                 pattern = re.compile(re.escape(term), re.IGNORECASE)
                 return pattern.sub(lambda m: f"<mark>{m.group(0)}</mark>", text_str)
 
-            limite = 50
-            for _, row in df.head(limite).iterrows():
+            limite = 15
+            for index, row in df.head(limite).iterrows():
                 match_badge_html = ""
                 if 'match_reason' in row and row['match_reason']:
                     match_badge_html = f'<span class="match-badge">🔍 {row["match_reason"]}</span>'
@@ -223,25 +357,30 @@ def render_consultation_page():
                     id_doc = f"EMPENHO: {row['numero_empenho']}"
                     entidade = row['nome_negociante']
                     detalhe = row['descricao_historico_empenho']
-                    valor_bruto = row['valor_empenhado']
-                    label = "Empenhado (R$)"
+                    
+                    val_emp = formatar_moeda(row['valor_empenhado'])
+                    val_liq = formatar_moeda(row.get('valor_liquidado', 0.0))
+                    val_pag = formatar_moeda(row.get('valor_pago', 0.0))
                     
                 elif categoria_sel == "Notas de Pagamento":
                     id_doc = f"PAGAMENTO: {row['numero_nota_pagamento']}"
                     entidade = row['nome_responsavel_pagamento']
                     detalhe = f"Ref. Empenho: {row['numero_empenho']} | Doc Caixa: {row['numero_documento_caixa']}"
-                    valor_bruto = row['valor_nota_pagamento']
-                    label = "Pago (R$)"
+                    
+                    val_emp = "---"
+                    val_liq = "---"
+                    val_pag = formatar_moeda(row['valor_nota_pagamento'])
                     
                 else: 
                     id_doc = f"NF: {row['numero_nota_fiscal']}"
                     entidade = f"Emitente: {row['cpf_cnpj_emitente']}"
                     detalhe = f"Empenho Associado: {row['numero_empenho']} | Série: {row['numero_serie']}"
-                    valor_bruto = row['valor_bruto']
-                    label = "Bruto (R$)"
+                    
+                    val_emp = "---"
+                    val_liq = formatar_moeda(row['valor_bruto'])
+                    val_pag = "---"
 
-                valor_formatado = formatar_moeda(valor_bruto)
-
+                # Escapa tags e caracteres especiais das variáveis
                 id_doc = str(id_doc).replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
                 entidade = str(entidade).replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
                 detalhe = str(detalhe).replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
@@ -252,39 +391,38 @@ def render_consultation_page():
                     detalhe = highlight_term(detalhe, filtro_geral)
 
                 detalhe_str = str(detalhe)
-                if len(detalhe_str) > 250 and not "<mark>" in detalhe_str[240:]:
-                    detalhe_exibicao = detalhe_str[:250] + '...'
+                if len(detalhe_str) > 220 and not "<mark>" in detalhe_str[210:]:
+                    detalhe_exibicao = detalhe_str[:220] + '...'
                 else:
                     detalhe_exibicao = detalhe_str
 
-                # Construção do card HTML com suporte a badges e marcações de busca
                 card_html = (
                     f'<div class="report-card">'
-                    f'<div style="display: flex; justify-content: space-between; align-items: stretch;">'
-                    f'<div style="flex: 3; border-right: 1px solid rgba(0,0,0,0.05); padding-right: 25px;">'
                     f'<div class="card-header-row">'
                     f'<div class="card-header">{id_doc}</div>'
                     f'{match_badge_html}'
                     f'</div>'
                     f'<div class="card-vendor">{entidade}</div>'
                     f'<div class="card-org">📍 {row["municipio_referencia"]}</div>'
-                    f'<div style="font-size: 0.9rem; line-height: 1.5; color: #444; margin-top: 10px;">'
+                    f'<div style="font-size: 0.9rem; line-height: 1.5; color: #444; margin-top: 10px; min-height: 52px;">'
                     f'{detalhe_exibicao}'
                     f'</div>'
-                    f'</div>'
-                    f'<div style="flex: 1.2; text-align: right; padding-left: 25px; display: flex; flex-direction: column; justify-content: center; background-color: rgba(0,0,0,0.01);">'
-                    f'<div style="font-size: 0.7rem; color: #888; font-weight: bold;">{label}</div>'
-                    f'<div class="card-value">R$ {valor_formatado}</div>'
-                    f'<div style="margin-top: 15px;"><a href="#" class="btn-fake">🔍 DETALHES</a></div>'
-                    f'</div>'
+                    f'<div class="values-grid">'
+                    f'<div class="value-col"><div class="value-title">Empenhado (R$)</div><div class="value-num val-empenhado">R$ {val_emp}</div></div>'
+                    f'<div class="value-col"><div class="value-title">Liquidado (R$)</div><div class="value-num val-liquidado">R$ {val_liq}</div></div>'
+                    f'<div class="value-col"><div class="value-title">Pago (R$)</div><div class="value-num val-pago">R$ {val_pag}</div></div>'
                     f'</div>'
                     f'</div>'
                 )
                 
                 st.markdown(card_html, unsafe_allow_html=True)
+                
+                # Botão nativo do Streamlit para o Modal
+                if st.button(f"🔎 DETALHES DO EMPENHO: {row.get('numero_empenho', index)}", key=f"det_{index}", use_container_width=True):
+                    exibir_modal_detalhes(row, categoria_sel, ano_sel, codigo_mun_busca)
 
             if len(df) > limite:
-                st.info(f"Mostrando os {limite} primeiros registros para garantir a performance.")
+                st.info(f"Exibindo os {limite} primeiros resultados para garantir excelente tempo de carregamento da interface.")
 
             st.divider()
             csv = df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
@@ -292,4 +430,4 @@ def render_consultation_page():
         else:
             st.warning(f"Nenhum arquivo encontrado para {categoria_sel} em {ano_sel}. Certifique-se de realizar a extração primeiro.")
     else:
-        st.info("Ajuste os filtros acima e clique em '🚀 Consultar' para visualizar os dados.")
+        st.info("Selecione os parâmetros e clique em 'Consultar' para visualizar os resultados.")
