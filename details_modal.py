@@ -48,6 +48,29 @@ def carregar_e_filtrar_modal(arquivos):
             continue
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
+def normalizar_serie_pandas(serie):
+    """
+    Normaliza uma série do Pandas para strings limpas comparáveis:
+    Remove '.0', retira espaços e remove zeros à esquerda para evitar problemas de padding.
+    Exemplo: "001.0" -> "1", "020" -> "20", "2024.0" -> "2024"
+    """
+    return (
+        serie.astype(str)
+        .str.strip()
+        .str.replace(r'\.0$', '', regex=True) # Remove decimal .0 do float
+        .str.replace(r'^0+', '', regex=True)  # Remove zeros à esquerda para alinhar tipagens
+        .str.strip()
+    )
+
+def normalizar_valor_unico(valor):
+    """Normaliza um único valor escalar para o mesmo formato da função acima."""
+    if pd.isna(valor) or valor is None:
+        return ""
+    val_str = str(valor).strip()
+    val_str = re.sub(r'\.0$', '', val_str)
+    val_str = re.sub(r'^0+', '', val_str)
+    return val_str.strip()
+
 
 # ==============================================================================
 # DIALOG (MODAL) EXPORTADO
@@ -56,11 +79,12 @@ def carregar_e_filtrar_modal(arquivos):
 def exibir_modal_detalhes(row, categoria, ano, codigo_mun):
     
     # --------------------------------------------------------------------------
-    # 1. DEFINIÇÃO DAS VARIÁVEIS DE BUSCA NO TOPO
-    # (Evita NameError em chamadas assíncronas ou fragmentadas do Streamlit)
+    # 1. MAPEAMENTO SEGURO DA CHAVE COMPOSTA DE UNICIDADE DO EMPENHO
     # --------------------------------------------------------------------------
-    num_empenho_busca = str(row.get('numero_empenho', '')).strip()
-    cod_mun_busca = str(row.get('codigo_municipio', '')).strip()
+    num_empenho_busca = normalizar_valor_unico(row.get('numero_empenho'))
+    cod_mun_busca     = normalizar_valor_unico(row.get('codigo_municipio'))
+    cod_orgao_busca   = normalizar_valor_unico(row.get('codigo_orgao'))
+    cod_unid_busca    = normalizar_valor_unico(row.get('codigo_unidade_orcamentaria'))
     
     # Cabeçalho Principal do Modal
     st.write(f"### Empenho Nº {row.get('numero_empenho', 'N/A')}")
@@ -135,23 +159,38 @@ def exibir_modal_detalhes(row, categoria, ano, codigo_mun):
         if arquivos_nfe:
             df_nfe = carregar_e_filtrar_modal(arquivos_nfe)
             if not df_nfe.empty:
-                # Filtrando pela nota/empenho e pelo município correspondente
+                # Normalização segura das chaves na base de Notas Fiscais
+                df_nfe['num_emp_norm'] = normalizar_serie_pandas(df_nfe['numero_empenho'])
+                df_nfe['cod_mun_norm'] = normalizar_serie_pandas(df_nfe['codigo_municipio'])
+                df_nfe['cod_org_norm'] = normalizar_serie_pandas(df_nfe['codigo_orgao'])
+                
+                # Unidade orçamentária é opcional em algumas bases auxiliares; tratamos se existir
+                if 'codigo_unidade_orcamentaria' in df_nfe.columns:
+                    df_nfe['cod_uni_norm'] = normalizar_serie_pandas(df_nfe['codigo_unidade_orcamentaria'])
+                    condicao_unidade = (df_nfe['cod_uni_norm'] == cod_unid_busca)
+                else:
+                    condicao_unidade = True
+
+                # Aplicação do Filtro Consistente
                 df_nfe_filtrada = df_nfe[
-                    (df_nfe['numero_empenho'].astype(str).str.strip() == num_empenho_busca) &
-                    (df_nfe['codigo_municipio'].astype(str).str.strip() == cod_mun_busca)
+                    (df_nfe['num_emp_norm'] == num_empenho_busca) &
+                    (df_nfe['cod_mun_norm'] == cod_mun_busca) &
+                    (df_nfe['cod_org_norm'] == cod_orgao_busca) &
+                    condicao_unidade
                 ]
                 
                 if not df_nfe_filtrada.empty:
-                    # Mapeando: Data, Nota fiscal, Valor
                     df_exibir_liq = pd.DataFrame()
                     df_exibir_liq['Data'] = df_nfe_filtrada['data_liquidacao'].apply(formatar_data_modal)
                     df_exibir_liq['Nota fiscal'] = df_nfe_filtrada['numero_nota_fiscal'].astype(str)
-                    df_exibir_liq['Valor'] = df_nfe_filtrada['valor_liquido'].apply(lambda x: f"R$ {formatar_moeda_modal(x)}")
+                    
+                    # Trata variação de coluna valor_liquido / valor_bruto
+                    col_valor_liq = 'valor_liquido' if 'valor_liquido' in df_nfe_filtrada.columns else 'valor_bruto'
+                    df_exibir_liq['Valor'] = df_nfe_filtrada[col_valor_liq].apply(lambda x: f"R$ {formatar_moeda_modal(x)}")
                     
                     st.dataframe(df_exibir_liq, use_container_width=True, hide_index=True)
                     
-                    # Quantidade e totalizadores inferiores como o layout de referência
-                    total_liq = df_nfe_filtrada['valor_liquido'].sum()
+                    total_liq = df_nfe_filtrada[col_valor_liq].sum()
                     st.markdown(
                         f"<div style='display: flex; justify-content: space-between; font-size: 0.85rem; color: #555; font-weight: bold;'>"
                         f"<span>Quantidade: {len(df_nfe_filtrada)}</span>"
@@ -174,23 +213,36 @@ def exibir_modal_detalhes(row, categoria, ano, codigo_mun):
         if arquivos_pag:
             df_pag = carregar_e_filtrar_modal(arquivos_pag)
             if not df_pag.empty:
-                # Filtrando pelo empenho e município correspondente
+                # Normalização segura das chaves na base de Notas de Pagamento
+                df_pag['num_emp_norm'] = normalizar_serie_pandas(df_pag['numero_empenho'])
+                df_pag['cod_mun_norm'] = normalizar_serie_pandas(df_pag['codigo_municipio'])
+                df_pag['cod_org_norm'] = normalizar_serie_pandas(df_pag['codigo_orgao'])
+                
+                if 'codigo_unidade_orcamentaria' in df_pag.columns:
+                    df_pag['cod_uni_norm'] = normalizar_serie_pandas(df_pag['codigo_unidade_orcamentaria'])
+                    condicao_unidade_pg = (df_pag['cod_uni_norm'] == cod_unid_busca)
+                else:
+                    condicao_unidade_pg = True
+
+                # Aplicação do Filtro Consistente
                 df_pag_filtrado = df_pag[
-                    (df_pag['numero_empenho'].astype(str).str.strip() == num_empenho_busca) &
-                    (df_pag['codigo_municipio'].astype(str).str.strip() == cod_mun_busca)
+                    (df_pag['num_emp_norm'] == num_empenho_busca) &
+                    (df_pag['cod_mun_norm'] == cod_mun_busca) &
+                    (df_pag['cod_org_norm'] == cod_orgao_busca) &
+                    condicao_unidade_pg
                 ]
                 
                 if not df_pag_filtrado.empty:
-                    # Mapeando: Data, Número pagamento, Valor
                     df_exibir_pag = pd.DataFrame()
                     df_exibir_pag['Data'] = df_pag_filtrado['data_nota_pagamento'].apply(formatar_data_modal)
                     df_exibir_pag['Número pagamento'] = df_pag_filtrado['numero_nota_pagamento'].astype(str)
-                    df_exibir_pag['Valor'] = df_pag_filtrado['valor_nota_pagamento'].apply(lambda x: f"R$ {formatar_moeda_modal(x)}")
+                    
+                    col_valor_pag = 'valor_nota_pagamento' if 'valor_nota_pagamento' in df_pag_filtrado.columns else 'valor_pago'
+                    df_exibir_pag['Valor'] = df_pag_filtrado[col_valor_pag].apply(lambda x: f"R$ {formatar_moeda_modal(x)}")
                     
                     st.dataframe(df_exibir_pag, use_container_width=True, hide_index=True)
                     
-                    # Quantidade e totalizadores de pagamentos
-                    total_pag = df_pag_filtrado['valor_nota_pagamento'].sum()
+                    total_pag = df_pag_filtrado[col_valor_pag].sum()
                     st.markdown(
                         f"<div style='display: flex; justify-content: space-between; font-size: 0.85rem; color: #555; font-weight: bold;'>"
                         f"<span>Quantidade: {len(df_pag_filtrado)}</span>"
@@ -204,6 +256,67 @@ def exibir_modal_detalhes(row, categoria, ano, codigo_mun):
                 st.warning("Base de dados de pagamentos sem registros.")
         else:
             st.caption("Base de pagamentos não localizada para este período.")
+
+    st.divider()
+
+    # ==============================================================================
+    # SEÇÃO 5: ITENS DA NOTA FISCAL
+    # ==============================================================================
+    st.markdown("#### 📦 Itens da Nota Fiscal")
+    
+    arquivos_itens = obter_caminho_arquivos_modal("itens_notas_fiscais", ano, codigo_mun)
+    
+    if arquivos_itens:
+        df_itens = carregar_e_filtrar_modal(arquivos_itens)
+        if not df_itens.empty:
+            # Identifica de forma dinâmica se o campo de empenho na base de itens se chama 'numero_nota_empenho' ou 'numero_empenho'
+            col_emp_item = 'numero_nota_empenho' if 'numero_nota_empenho' in df_itens.columns else 'numero_empenho'
+            
+            # Normalização das chaves na base de itens
+            df_itens['num_emp_norm'] = normalizar_serie_pandas(df_itens[col_emp_item])
+            df_itens['cod_mun_norm'] = normalizar_serie_pandas(df_itens['codigo_municipio'])
+            df_itens['cod_org_norm'] = normalizar_serie_pandas(df_itens['codigo_orgao'])
+            
+            if 'codigo_unidade_orcamentaria' in df_itens.columns:
+                df_itens['cod_uni_norm'] = normalizar_serie_pandas(df_itens['codigo_unidade_orcamentaria'])
+                condicao_unidade_it = (df_itens['cod_uni_norm'] == cod_unid_busca)
+            else:
+                condicao_unidade_it = True
+
+            # Aplicação do Filtro Consistente
+            itens_filtrados = df_itens[
+                (df_itens['num_emp_norm'] == num_empenho_busca) & 
+                (df_itens['cod_mun_norm'] == cod_mun_busca) &
+                (df_itens['cod_org_norm'] == cod_orgao_busca) &
+                condicao_unidade_it
+            ]
+            
+            if not itens_filtrados.empty:
+                colunas_exibicao = {
+                    'descricao_item': 'Descrição do Item',
+                    'unidade_compra': 'Unidade',
+                    'numero_quantidade_comprada': 'Qtd',
+                    'valor_unitario_item': 'Valor Unitário',
+                    'valor_total_item': 'Valor Total'
+                }
+                colunas_existentes = [col for col in colunas_exibicao.keys() if col in itens_filtrados.columns]
+                
+                if colunas_existentes:
+                    df_exibir = itens_filtrados[colunas_existentes].rename(columns={k: v for k, v in colunas_exibicao.items() if k in colunas_existentes})
+                    if 'Valor Unitário' in df_exibir.columns:
+                        df_exibir['Valor Unitário'] = df_exibir['Valor Unitário'].apply(lambda x: f"R$ {formatar_moeda_modal(x)}")
+                    if 'Valor Total' in df_exibir.columns:
+                        df_exibir['Valor Total'] = df_exibir['Valor Total'].apply(lambda x: f"R$ {formatar_moeda_modal(x)}")
+                    
+                    st.dataframe(df_exibir, use_container_width=True, hide_index=True)
+                else:
+                    st.warning("As colunas de detalhamento de itens não foram localizadas nesta base.")
+            else:
+                st.warning("Nenhum item quantitativo discriminado foi anexado a este empenho.")
+        else:
+            st.warning("Base de dados de itens da NF não possui registros.")
+    else:
+        st.caption("Base de itens físicos das Notas Fiscais não localizada para este período.")
 
     st.divider()
     
