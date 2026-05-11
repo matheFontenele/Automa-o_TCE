@@ -1,8 +1,8 @@
-# details_modal.py
 import streamlit as st
 import pandas as pd
 import glob
 import re
+import requests
 
 # IMPORTANDO O GERADOR DE PDF ISOLADO
 from gerador_pdf import gerar_pdf_empenho
@@ -71,6 +71,42 @@ def normalizar_valor_unico(valor):
     val_str = re.sub(r'^0+', '', val_str)
     return val_str.strip()
 
+@st.cache_data(show_spinner=False)
+def buscar_nome_orgao_api(codigo_municipio: str, ano_exercicio: str, codigo_orgao: str) -> str:
+    """
+    Busca o nome do órgão na API do TCE-CE com base no código do município,
+    exercício (ano) e código do órgão, aplicando normalização segura de caracteres.
+    """
+    # Garante o preenchimento de zeros (ex: "63" -> "063")
+    cod_mun_fmt = str(codigo_municipio).zfill(3)
+    # Formata o exercício do orçamento como string no formato YYYY00 (ex: "2025" -> "202500")
+    exercicio_fmt = f"{str(ano_exercicio)[:4]}00"
+    # Normaliza o órgão de busca (ex: 1 -> "01")
+    cod_org_fmt = str(codigo_orgao).zfill(2)
+    
+    url = "https://api-dados-abertos.tce.ce.gov.br/sim/orgaos"
+    params = {
+        "codigo_municipio": cod_mun_fmt,
+        "exercicio_orcamento": exercicio_fmt,
+        "$format": "json"
+    }
+    
+    try:
+        response = requests.get(url, params=params, timeout=8)
+        if response.status_code == 200:
+            dados = response.json()
+            elementos = dados.get("elements", [])
+            
+            for elemento in elementos:
+                # Compara os códigos de órgão de forma normalizada
+                org_atual = str(elemento.get("codigo_orgao", "")).zfill(2)
+                if org_atual == cod_org_fmt:
+                    return elemento.get("nome_orgao", "").strip()
+    except Exception:
+        pass
+    
+    return ""
+
 
 # ==============================================================================
 # DIALOG (MODAL) EXPORTADO
@@ -117,9 +153,6 @@ def exibir_modal_detalhes(row, categoria, ano, codigo_mun):
         cnpj_fornecedor = row.get('numero_documento_negociante', row.get('cpf_cnpj_emitente', row.get('cpf_responsavel_pagamento', 'Ocultado')))
         st.markdown(f"**CNPJ/CPF Fornecedor:** `{cnpj_fornecedor}`")
         
-        # Modalidade da Licitação
-        modalidade_licitacao = row.get('tipo_processo_licitatorio', 'N/A')
-        st.markdown(f"**Modalidade de Licitação:** `{modalidade_licitacao}`")
 
     st.divider()
 
@@ -128,13 +161,30 @@ def exibir_modal_detalhes(row, categoria, ano, codigo_mun):
     # ==============================================================================
     st.markdown("#### 🏛️ INFORMAÇÕES DE ORÇAMENTO")
     
+    # Busca dinâmica do nome do órgão usando a API do TCE-CE
+    cod_orgao_bruto = row.get('codigo_orgao', '')
+    cod_municipio_bruto = row.get('codigo_municipio', codigo_mun)
+    ano_exercicio = str(row.get('exercicio_orcamento', ano))[:4]
+    
+    nome_orgao_extenso = ""
+    if cod_orgao_bruto and cod_municipio_bruto:
+        nome_orgao_extenso = buscar_nome_orgao_api(
+            codigo_municipio=cod_municipio_bruto,
+            ano_exercicio=ano_exercicio,
+            codigo_orgao=cod_orgao_bruto
+        )
+    
     col_orc1, col_orc2 = st.columns(2)
     with col_orc1:
         unidade_gestora = f"{row.get('municipio_referencia', 'N/A')} - U.O. {row.get('codigo_unidade_orcamentaria', 'N/A')}"
         st.markdown(f"**Unidade Gestora:** {unidade_gestora}")
 
     with col_orc2:
-        st.markdown(f"**Órgão:** `{row.get('codigo_orgao', 'N/A')}`")
+        # Mostra o código e o nome retornado pela API (caso exista)
+        if nome_orgao_extenso:
+            st.markdown(f"**Órgão:** `{cod_orgao_bruto}` — *{nome_orgao_extenso}*")
+        else:
+            st.markdown(f"**Órgão:** `{cod_orgao_bruto or 'N/A'}`")
 
     st.divider()
 
@@ -256,67 +306,6 @@ def exibir_modal_detalhes(row, categoria, ano, codigo_mun):
                 st.warning("Base de dados de pagamentos sem registros.")
         else:
             st.caption("Base de pagamentos não localizada para este período.")
-
-    st.divider()
-
-    # ==============================================================================
-    # SEÇÃO 5: ITENS DA NOTA FISCAL
-    # ==============================================================================
-    st.markdown("#### 📦 Itens da Nota Fiscal")
-    
-    arquivos_itens = obter_caminho_arquivos_modal("itens_notas_fiscais", ano, codigo_mun)
-    
-    if arquivos_itens:
-        df_itens = carregar_e_filtrar_modal(arquivos_itens)
-        if not df_itens.empty:
-            # Identifica de forma dinâmica se o campo de empenho na base de itens se chama 'numero_nota_empenho' ou 'numero_empenho'
-            col_emp_item = 'numero_nota_empenho' if 'numero_nota_empenho' in df_itens.columns else 'numero_empenho'
-            
-            # Normalização das chaves na base de itens
-            df_itens['num_emp_norm'] = normalizar_serie_pandas(df_itens[col_emp_item])
-            df_itens['cod_mun_norm'] = normalizar_serie_pandas(df_itens['codigo_municipio'])
-            df_itens['cod_org_norm'] = normalizar_serie_pandas(df_itens['codigo_orgao'])
-            
-            if 'codigo_unidade_orcamentaria' in df_itens.columns:
-                df_itens['cod_uni_norm'] = normalizar_serie_pandas(df_itens['codigo_unidade_orcamentaria'])
-                condicao_unidade_it = (df_itens['cod_uni_norm'] == cod_unid_busca)
-            else:
-                condicao_unidade_it = True
-
-            # Aplicação do Filtro Consistente
-            itens_filtrados = df_itens[
-                (df_itens['num_emp_norm'] == num_empenho_busca) & 
-                (df_itens['cod_mun_norm'] == cod_mun_busca) &
-                (df_itens['cod_org_norm'] == cod_orgao_busca) &
-                condicao_unidade_it
-            ]
-            
-            if not itens_filtrados.empty:
-                colunas_exibicao = {
-                    'descricao_item': 'Descrição do Item',
-                    'unidade_compra': 'Unidade',
-                    'numero_quantidade_comprada': 'Qtd',
-                    'valor_unitario_item': 'Valor Unitário',
-                    'valor_total_item': 'Valor Total'
-                }
-                colunas_existentes = [col for col in colunas_exibicao.keys() if col in itens_filtrados.columns]
-                
-                if colunas_existentes:
-                    df_exibir = itens_filtrados[colunas_existentes].rename(columns={k: v for k, v in colunas_exibicao.items() if k in colunas_existentes})
-                    if 'Valor Unitário' in df_exibir.columns:
-                        df_exibir['Valor Unitário'] = df_exibir['Valor Unitário'].apply(lambda x: f"R$ {formatar_moeda_modal(x)}")
-                    if 'Valor Total' in df_exibir.columns:
-                        df_exibir['Valor Total'] = df_exibir['Valor Total'].apply(lambda x: f"R$ {formatar_moeda_modal(x)}")
-                    
-                    st.dataframe(df_exibir, use_container_width=True, hide_index=True)
-                else:
-                    st.warning("As colunas de detalhamento de itens não foram localizadas nesta base.")
-            else:
-                st.warning("Nenhum item quantitativo discriminado foi anexado a este empenho.")
-        else:
-            st.warning("Base de dados de itens da NF não possui registros.")
-    else:
-        st.caption("Base de itens físicos das Notas Fiscais não localizada para este período.")
 
     st.divider()
     
