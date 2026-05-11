@@ -27,15 +27,21 @@ def render_extraction_page():
     with st.sidebar:
         st.header("Configurações")
         
+        # Criando a lista de anos de 2008 até 2026
+        anos_disponiveis = list(range(2008, 2027))
+        
         # Persistência de estado do Ano
         if 'ano_input' not in st.session_state: 
-            st.session_state.ano_input = 2025
+            st.session_state.ano_input = 2025  # Ano padrão inicial
             
-        st.session_state.ano_input = st.number_input(
+        # Garante que o valor salvo no state existe na lista de anos para não gerar erro no selectbox
+        default_index = anos_disponiveis.index(st.session_state.ano_input) if st.session_state.ano_input in anos_disponiveis else len(anos_disponiveis) - 1
+
+        # Substituído st.number_input por st.selectbox
+        st.session_state.ano_input = st.selectbox(
             "Ano Base", 
-            min_value=2000, 
-            max_value=2030, 
-            value=st.session_state.ano_input
+            options=anos_disponiveis,
+            index=default_index
         )
 
         lista_municipios = carregar_municipios()
