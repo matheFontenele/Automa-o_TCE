@@ -1,0 +1,6 @@
+[server]
+# Força o Streamlit a verificar alterações manualmente por tempo (essencial para WSL/Docker)
+fileWatcherType = "poll"
+
+# Reduz o intervalo de checagem para responder mais rápido (em segundos)
+runOnSave = true
