@@ -4,8 +4,8 @@ import pandas as pd
 import glob
 import re
 from main import carregar_municipios
-# IMPORTANDO O MODAL ISOLADO
 from details_modal import exibir_modal_detalhes
+from details_modal_pagamento import exibir_modal_detalhes_pagamento
 
 # ==============================================================================
 # CSS DOS CARDS (Otimizado e idêntico ao padrão visual do TCE)
@@ -235,7 +235,7 @@ def render_consultation_page():
             "Notas Fiscais": "notas_fiscais",
             "Itens de Notas Fiscais": "itens_notas_fiscais",
             "Notas de Pagamento": "notas_pagamentos",
-            "Liquidações": "notas_liquidacao"
+            "Liquidações": "liquidacoes"
         }
 
         prefixo = mapa_prefixos[categoria_sel]
@@ -246,6 +246,7 @@ def render_consultation_page():
         arquivos = obter_caminho_arquivos(prefixo, ano_sel, codigo_mun_busca)
 
         if arquivos:
+
             df = carregar_e_filtrar(arquivos)
 
             if municipio_sel != "Todos" and not df.empty and 'municipio_referencia' in df.columns:
@@ -253,36 +254,35 @@ def render_consultation_page():
                 df = df[df['municipio_referencia'].str.upper() == nome_municipio_real.upper()]
 
             if not df.empty:
-                df['match_reason'] = ""
-                
+                df['match_reason'] = "" 
+
                 if categoria_sel == "Notas de Empenho":
                     df['codigo_municipio'] = df['codigo_municipio'].astype(str)
                     df['codigo_orgao'] = df['codigo_orgao'].astype(str)
                     df['numero_empenho'] = df['numero_empenho'].astype(str)
                     df['chave_composta'] = df['codigo_municipio'].str.strip() + "_" + df['codigo_orgao'].str.strip() + "_" + df['numero_empenho'].str.strip()
-                    
                     arq_nf = obter_caminho_arquivos("notas_fiscais", ano_sel, codigo_mun_busca)
                     df_nf = carregar_e_filtrar(arq_nf)
                     liq_map = {}
-                    
+
                     if not df_nf.empty:
                         df_nf['codigo_municipio'] = df_nf['codigo_municipio'].astype(str)
                         df_nf['codigo_orgao'] = df_nf['codigo_orgao'].astype(str)
                         df_nf['numero_empenho'] = df_nf['numero_empenho'].astype(str)
                         df_nf['chave_composta'] = df_nf['codigo_municipio'].str.strip() + "_" + df_nf['codigo_orgao'].str.strip() + "_" + df_nf['numero_empenho'].str.strip()
                         liq_map = df_nf.groupby('chave_composta')['valor_bruto'].sum().to_dict()
-                        
+                       
                     arq_pg = obter_caminho_arquivos("notas_pagamentos", ano_sel, codigo_mun_busca)
                     df_pg = carregar_e_filtrar(arq_pg)
                     pag_map = {}
-                    
+                   
                     if not df_pg.empty:
                         df_pg['codigo_municipio'] = df_pg['codigo_municipio'].astype(str)
                         df_pg['codigo_orgao'] = df_pg['codigo_orgao'].astype(str)
                         df_pg['numero_empenho'] = df_pg['numero_empenho'].astype(str)
                         df_pg['chave_composta'] = df_pg['codigo_municipio'].str.strip() + "_" + df_pg['codigo_orgao'].str.strip() + "_" + df_pg['numero_empenho'].str.strip()
                         pag_map = df_pg.groupby('chave_composta')['valor_nota_pagamento'].sum().to_dict()
-                    
+                   
                     df['valor_liquidado'] = df['chave_composta'].map(liq_map).fillna(0.0)
                     df['valor_pago'] = df['chave_composta'].map(pag_map).fillna(0.0)
 
@@ -511,13 +511,33 @@ def render_consultation_page():
                 
                 st.markdown(card_html, unsafe_allow_html=True)
                 
-                # O botão de modal consome o número do empenho. Certificamos de passar um fallback seguro.
-                num_emp_modal = row.get('numero_empenho', index)
-                if st.button(f"🔎 DETALHES DO EMPENHO: {num_emp_modal}", key=f"det_{index}", use_container_width=True):
-                    exibir_modal_detalhes(row, filtros['categoria_sel'], filtros['ano_sel'], filtros['codigo_mun_busca'])
+                # ==============================================================================
+                # BOTÃO DE DETALHES
+                # ==============================================================================
+                if st.button("DETALHES 🔎", key=f"btn_det_{index}", use_container_width=True):
+                    if filtros['categoria_sel'] == "Notas de Pagamento":
+                        exibir_modal_detalhes_pagamento(
+                            row, 
+                            filtros['categoria_sel'], 
+                            filtros['ano_sel'], 
+                            filtros['codigo_mun_busca'],
+                            id_unico=index
+                        )
+                    else:
+                        exibir_modal_detalhes(
+                            row, 
+                            filtros['categoria_sel'], 
+                            filtros['ano_sel'], 
+                            filtros['codigo_mun_busca'],
+                            id_unico=index
+                        )
 
+            # Recuo correto (identação) para o restante dos elementos pós-loop
             if len(df) > limite:
                 st.info(f"Exibindo os {limite} primeiros resultados para garantir excelente tempo de carregamento da interface.")
+
+            # Espaçamento estético entre os cards
+            st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
 
             st.divider()
             csv = df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')

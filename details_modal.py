@@ -112,7 +112,7 @@ def buscar_nome_orgao_api(codigo_municipio: str, ano_exercicio: str, codigo_orga
 # DIALOG (MODAL) EXPORTADO
 # ==============================================================================
 @st.dialog("📋 Detalhes do Empenho", width="large")
-def exibir_modal_detalhes(row, categoria, ano, codigo_mun):
+def exibir_modal_detalhes(row, categoria, ano, codigo_mun, id_unico=None):
     
     # --------------------------------------------------------------------------
     # 1. MAPEAMENTO SEGURO DA CHAVE COMPOSTA DE UNICIDADE DO EMPENHO
