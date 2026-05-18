@@ -134,6 +134,8 @@ CSS_CARDS = """
 </style>
 """
 
+anos = list(range(2008, 2027))
+
 # ==============================================================================
 # FUNÇÕES DE TRATAMENTO E CARREGAMENTO DE DADOS (Consulta Geral)
 # ==============================================================================
@@ -172,8 +174,13 @@ def formatar_data(data_raw):
 
 def obter_caminho_arquivos(prefixo, ano, codigo_mun):
     if codigo_mun == "Todos":
-        return sorted(glob.glob(f"data/{prefixo}_{ano}_*.parquet"))
-    return sorted(glob.glob(f"data/{prefixo}_{ano}_*_{codigo_mun}.parquet"))
+        # Captura tanto os mensais quanto os anuais coringando a estrutura
+        return sorted(glob.glob(f"data/{prefixo}_{ano}_*.parquet") + glob.glob(f"data/{prefixo}_{ano}.parquet"))
+    
+    # Se informou o município, busca com e sem o padrão de meses
+    mensais = glob.glob(f"data/{prefixo}_{ano}_*_{codigo_mun}.parquet")
+    anuais = glob.glob(f"data/{prefixo}_{ano}_{codigo_mun}.parquet")
+    return sorted(mensais + anuais)
 
 
 # ==============================================================================
@@ -183,7 +190,7 @@ def render_consultation_page():
     st.header("🔍 Consulta Detalhada")
     st.markdown(CSS_CARDS, unsafe_allow_html=True)
 
-    # Inicializa variáveis de estado se não existirem
+    # Inicializa variáveis de estado se não existiren
     if "consulta_realizada" not in st.session_state:
         st.session_state.consulta_realizada = False
     if "df_resultado" not in st.session_state:
@@ -195,23 +202,26 @@ def render_consultation_page():
     opcoes_mun = {f"{m['nome_municipio']} ({m['codigo_municipio']})": m for m in lista_municipios}
 
     with st.expander("Opções de Filtro", expanded=not st.session_state.consulta_realizada):
-        categoria_sel = st.selectbox("Tipo de Documento", ["Notas de Empenho", "Notas Fiscais", "Notas de Pagamento"])
+        categoria_sel = st.selectbox(
+            "Tipo de Documento", 
+            ["Notas de Empenho", "Notas Fiscais", "Itens de Notas Fiscais", "Notas de Pagamento", "Liquidações"]
+        )
         
         if categoria_sel == "Notas de Empenho":
             col_ano, col_mun, col_pag = st.columns(3)
-            ano_sel = col_ano.selectbox("Ano", [2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026], index=5)
+            ano_sel = col_ano.selectbox("Ano", anos, index=5)
             municipio_sel = col_mun.selectbox("Município", options=["Todos"] + list(opcoes_mun.keys()))
             pagamento_sel = col_pag.selectbox("Filtro de Pagamento", ["TODOS", "PENDENTE", "PARCIAL", "PAGO"])
         else:
             col_ano, col_mun = st.columns(2)
-            ano_sel = col_ano.selectbox("Ano", [2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026], index=5)
+            ano_sel = col_ano.selectbox("Ano", anos, index=5)
             municipio_sel = col_mun.selectbox("Município", options=["Todos"] + list(opcoes_mun.keys()))
             pagamento_sel = "TODOS"
         
         col_busca, col_botao = st.columns([8, 2])
         filtro_geral = col_busca.text_input(
             "Busca Geral", 
-            placeholder="Digite nº empenho, credor, CNPJ, responsável ou conteúdo do histórico...",
+            placeholder="Digite nº empenho, credor, CNPJ, responsável, item ou conteúdo do histórico...",
             label_visibility="visible"
         ).strip()
         
@@ -223,7 +233,9 @@ def render_consultation_page():
         mapa_prefixos = {
             "Notas de Empenho": "notas_empenho",
             "Notas Fiscais": "notas_fiscais",
-            "Notas de Pagamento": "notas_pagamentos"
+            "Itens de Notas Fiscais": "itens_notas_fiscais",
+            "Notas de Pagamento": "notas_pagamentos",
+            "Liquidações": "notas_liquidacao"
         }
 
         prefixo = mapa_prefixos[categoria_sel]
@@ -289,13 +301,19 @@ def render_consultation_page():
                     if pagamento_sel != "TODOS":
                         df = df[df['status_pagamento'] == pagamento_sel]
 
+            # ==============================================================================
+            # BLOCO DE FILTROS CONDICIONAIS DE BUSCA GERAL
+            # ==============================================================================
             if filtro_geral and not df.empty:
+                # Normaliza string de busca
+                termo = str(filtro_geral).strip()
+
                 if categoria_sel == "Notas de Empenho":
-                    mask_num = df['numero_empenho'].astype(str).str.contains(filtro_geral, case=False, na=False)
-                    mask_doc = df['numero_documento_negociante'].astype(str).str.contains(filtro_geral, case=False, na=False)
-                    mask_cred = df['nome_negociante'].str.contains(filtro_geral, case=False, na=False)
-                    mask_hist = df['descricao_historico_empenho'].str.contains(filtro_geral, case=False, na=False)
-                    mask_contrato = df['numero_contrato'].astype(str).str.contains(filtro_geral, case=False, na=False)
+                    mask_num = df['numero_empenho'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_doc = df['numero_documento_negociante'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_cred = df['nome_negociante'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_hist = df['descricao_historico_empenho'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_contrato = df['numero_contrato'].astype(str).str.contains(termo, case=False, na=False)
 
                     df.loc[mask_hist, 'match_reason'] = "Encontrado no Histórico"
                     df.loc[mask_cred, 'match_reason'] = "Credor cadastrado"
@@ -305,10 +323,10 @@ def render_consultation_page():
                     mask = mask_num | mask_doc | mask_cred | mask_hist | mask_contrato
 
                 elif categoria_sel == "Notas de Pagamento":
-                    mask_num_emp = df['numero_empenho'].astype(str).str.contains(filtro_geral, case=False, na=False)
-                    mask_num_pg = df['numero_nota_pagamento'].astype(str).str.contains(filtro_geral, case=False, na=False)
-                    mask_resp = df['nome_responsavel_pagamento'].str.contains(filtro_geral, case=False, na=False)
-                    mask_doc_cx = df['numero_documento_caixa'].astype(str).str.contains(filtro_geral, case=False, na=False)
+                    mask_num_emp = df['numero_empenho'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_num_pg = df['numero_nota_pagamento'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_resp = df['nome_responsavel_pagamento'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_doc_cx = df['numero_documento_caixa'].astype(str).str.contains(termo, case=False, na=False)
 
                     df.loc[mask_doc_cx, 'match_reason'] = "Nº Doc Caixa"
                     df.loc[mask_resp, 'match_reason'] = "Responsável Pagto"
@@ -316,11 +334,37 @@ def render_consultation_page():
                     df.loc[mask_num_emp, 'match_reason'] = "Nº Empenho"
                     mask = mask_num_emp | mask_num_pg | mask_resp | mask_doc_cx
 
+                elif categoria_sel == "Liquidações":
+                    mask_num_emp = df['numero_empenho'].astype(str).str.contains(termo, case=False, na=False)
+                    
+                    col_num_liq = 'numero_nota_liquidacao' if 'numero_nota_liquidacao' in df.columns else 'numero_nota_fiscal'
+                    col_hist_liq = 'descricao_historico_nota_liquidacao' if 'descricao_historico_nota_liquidacao' in df.columns else 'municipio_referencia'
+
+                    mask_num_liq = df[col_num_liq].astype(str).str.contains(termo, case=False, na=False)
+                    mask_hist_liq = df[col_hist_liq].astype(str).str.contains(termo, case=False, na=False)
+                    
+                    df.loc[mask_hist_liq, 'match_reason'] = "Histórico de Liquidação"
+                    df.loc[mask_num_liq, 'match_reason'] = "Nº Liquidação"
+                    df.loc[mask_num_emp, 'match_reason'] = "Nº Empenho"
+                    mask = mask_num_emp | mask_num_liq | mask_hist_liq
+
+                elif categoria_sel == "Itens de Notas Fiscais":
+                    col_emp_item = 'numero_nota_empenho' if 'numero_nota_empenho' in df.columns else 'numero_empenho'
+                    
+                    mask_num_emp = df[col_emp_item].astype(str).str.contains(termo, case=False, na=False)
+                    mask_desc_item = df['descricao_item'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_num_nf = df['numero_nota_fiscal'].astype(str).str.contains(termo, case=False, na=False)
+
+                    df.loc[mask_num_nf, 'match_reason'] = "Nº Nota Fiscal"
+                    df.loc[mask_desc_item, 'match_reason'] = "Descrição do Item"
+                    df.loc[mask_num_emp, 'match_reason'] = "Nº Empenho"
+                    mask = mask_num_emp | mask_desc_item | mask_num_nf
+
                 else:
-                    mask_num_emp = df['numero_empenho'].astype(str).str.contains(filtro_geral, case=False, na=False)
-                    mask_num_nf = df['numero_nota_fiscal'].astype(str).str.contains(filtro_geral, case=False, na=False)
-                    mask_emit = df['cpf_cnpj_emitente'].astype(str).str.contains(filtro_geral, case=False, na=False)
-                    mask_chave = df['numero_chave_acesso_nfe'].astype(str).str.contains(filtro_geral, case=False, na=False)
+                    mask_num_emp = df['numero_empenho'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_num_nf = df['numero_nota_fiscal'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_emit = df['cpf_cnpj_emitente'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_chave = df['numero_chave_acesso_nfe'].astype(str).str.contains(termo, case=False, na=False)
 
                     df.loc[mask_chave, 'match_reason'] = "Chave de Acesso NF"
                     df.loc[mask_emit, 'match_reason'] = "CPF/CNPJ Emitente"
@@ -377,6 +421,9 @@ def render_consultation_page():
                     status_class = "status-" + str(row['status_pagamento']).lower()
                     status_badge_html = f'<span class="status-badge {status_class}">{row["status_pagamento"]}</span>'
 
+                # ==============================================================================
+                # TRATAMENTO DE VARIÁVEIS POR CATEGORIA DE VISUALIZAÇÃO
+                # ==============================================================================
                 if filtros['categoria_sel'] == "Notas de Empenho":
                     id_doc = f"EMPENHO: {row.get('numero_empenho', 'N/A')}"
                     entidade = row.get('nome_negociante', 'Não Informado')
@@ -396,8 +443,28 @@ def render_consultation_page():
                     val_emp = "---"
                     val_liq = "---"
                     val_pag = formatar_moeda(row.get('valor_nota_pagamento', 0.0))
+
+                elif filtros['categoria_sel'] == "Liquidações":
+                    id_doc = f"LIQUIDAÇÃO: {row.get('numero_nota_liquidacao', 'N/A')}"
+                    entidade = f"Ref. Empenho: {row.get('numero_empenho', 'N/A')}"
+                    detalhe = row.get('descricao_historico_nota_liquidacao', 'Sem histórico de liquidação')
+                    data_item = formatar_data(row.get('data_nota_liquidacao'))
                     
-                else: 
+                    val_emp = "---"
+                    val_liq = formatar_moeda(row.get('valor_bruto_nota_liquidacao', row.get('valor_liquidado', 0.0)))
+                    val_pag = "---"
+
+                elif filtros['categoria_sel'] == "Itens de Notas Fiscais":
+                    id_doc = f"ITEM DA NF: {row.get('numero_nota_fiscal', 'N/A')}"
+                    entidade = f"Item nº {row.get('numero_item', '-')}"
+                    detalhe = f"Descrição: {row.get('descricao_item', 'Não informada')} | Qtd: {row.get('quantidade_item', 1)}"
+                    data_item = formatar_data(row.get('data_emissao', ''))
+                    
+                    val_emp = "---"
+                    val_liq = formatar_moeda(row.get('valor_total_item', 0.0)) # Representa o valor do item físico
+                    val_pag = "---"
+                    
+                else: # Notas Fiscais
                     id_doc = f"NF: {row.get('numero_nota_fiscal', 'N/A')}"
                     entidade = f"Emitente: {row.get('cpf_cnpj_emitente', 'Não Informado')}"
                     detalhe = f"Empenho Associado: {row.get('numero_empenho', 'N/A')} | Série: {row.get('numero_serie', 'N/A')}"
@@ -435,17 +502,18 @@ def render_consultation_page():
                     f'{detalhe_exibicao}'
                     f'</div>'
                     f'<div class="values-grid">'
-                    f'<div class="value-col"><div class="value-title">Empenhado (R$)</div><div class="value-num val-empenhado">R$ {val_emp}</div></div>'
-                    f'<div class="value-col"><div class="value-title">Liquidado (R$)</div><div class="value-num val-liquidado">R$ {val_liq}</div></div>'
-                    f'<div class="value-col"><div class="value-title">Pago (R$)</div><div class="value-num val-pago">R$ {val_pag}</div></div>'
+                    f'<div class="value-col"><div class="value-title">Empenhado (R$)</div><div class="value-num val-empenhado">{val_emp if val_emp == "---" else "R$ " + val_emp}</div></div>'
+                    f'<div class="value-col"><div class="value-title">Liquidado (R$)</div><div class="value-num val-liquidado">{val_liq if val_liq == "---" else "R$ " + val_liq}</div></div>'
+                    f'<div class="value-col"><div class="value-title">Pago (R$)</div><div class="value-num val-pago">{val_pag if val_pag == "---" else "R$ " + val_pag}</div></div>'
                     f'</div>'
                     f'</div>'
                 )
                 
                 st.markdown(card_html, unsafe_allow_html=True)
                 
-                # Chamando o botão que consome a função importada de details_modal.py
-                if st.button(f"🔎 DETALHES DO EMPENHO: {row.get('numero_empenho', index)}", key=f"det_{index}", use_container_width=True):
+                # O botão de modal consome o número do empenho. Certificamos de passar um fallback seguro.
+                num_emp_modal = row.get('numero_empenho', index)
+                if st.button(f"🔎 DETALHES DO EMPENHO: {num_emp_modal}", key=f"det_{index}", use_container_width=True):
                     exibir_modal_detalhes(row, filtros['categoria_sel'], filtros['ano_sel'], filtros['codigo_mun_busca'])
 
             if len(df) > limite:
