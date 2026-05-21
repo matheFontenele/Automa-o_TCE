@@ -174,10 +174,8 @@ def formatar_data(data_raw):
 
 def obter_caminho_arquivos(prefixo, ano, codigo_mun):
     if codigo_mun == "Todos":
-        # Captura tanto os mensais quanto os anuais coringando a estrutura
         return sorted(glob.glob(f"data/{prefixo}_{ano}_*.parquet") + glob.glob(f"data/{prefixo}_{ano}.parquet"))
     
-    # Se informou o município, busca com e sem o padrão de meses
     mensais = glob.glob(f"data/{prefixo}_{ano}_*_{codigo_mun}.parquet")
     anuais = glob.glob(f"data/{prefixo}_{ano}_{codigo_mun}.parquet")
     return sorted(mensais + anuais)
@@ -190,7 +188,6 @@ def render_consultation_page():
     st.header("🔍 Consulta Detalhada")
     st.markdown(CSS_CARDS, unsafe_allow_html=True)
 
-    # Inicializa variáveis de estado se não existiren
     if "consulta_realizada" not in st.session_state:
         st.session_state.consulta_realizada = False
     if "df_resultado" not in st.session_state:
@@ -228,7 +225,6 @@ def render_consultation_page():
         col_botao.markdown("<div style='padding-top: 28px;'></div>", unsafe_allow_html=True)
         btn_consultar = col_botao.button("Consultar", use_container_width=True)
 
-    # Processa a busca se o botão for clicado
     if btn_consultar:
         mapa_prefixos = {
             "Notas de Empenho": "notas_empenho",
@@ -246,7 +242,6 @@ def render_consultation_page():
         arquivos = obter_caminho_arquivos(prefixo, ano_sel, codigo_mun_busca)
 
         if arquivos:
-
             df = carregar_e_filtrar(arquivos)
 
             if municipio_sel != "Todos" and not df.empty and 'municipio_referencia' in df.columns:
@@ -261,6 +256,7 @@ def render_consultation_page():
                     df['codigo_orgao'] = df['codigo_orgao'].astype(str)
                     df['numero_empenho'] = df['numero_empenho'].astype(str)
                     df['chave_composta'] = df['codigo_municipio'].str.strip() + "_" + df['codigo_orgao'].str.strip() + "_" + df['numero_empenho'].str.strip()
+                    
                     arq_nf = obter_caminho_arquivos("notas_fiscais", ano_sel, codigo_mun_busca)
                     df_nf = carregar_e_filtrar(arq_nf)
                     liq_map = {}
@@ -302,18 +298,17 @@ def render_consultation_page():
                         df = df[df['status_pagamento'] == pagamento_sel]
 
             # ==============================================================================
-            # BLOCO DE FILTROS CONDICIONAIS DE BUSCA GERAL
+            # BLOCO DE FILTROS CONDICIONAIS DE BUSCA GERAL (Totalmente Blindado contra KeyError)
             # ==============================================================================
             if filtro_geral and not df.empty:
-                # Normaliza string de busca
                 termo = str(filtro_geral).strip()
 
                 if categoria_sel == "Notas de Empenho":
                     mask_num = df['numero_empenho'].astype(str).str.contains(termo, case=False, na=False)
-                    mask_doc = df['numero_documento_negociante'].astype(str).str.contains(termo, case=False, na=False)
-                    mask_cred = df['nome_negociante'].astype(str).str.contains(termo, case=False, na=False)
-                    mask_hist = df['descricao_historico_empenho'].astype(str).str.contains(termo, case=False, na=False)
-                    mask_contrato = df['numero_contrato'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_doc = df['numero_documento_negociante'].astype(str).str.contains(termo, case=False, na=False) if 'numero_documento_negociante' in df.columns else pd.Series(False, index=df.index)
+                    mask_cred = df['nome_negociante'].astype(str).str.contains(termo, case=False, na=False) if 'nome_negociante' in df.columns else pd.Series(False, index=df.index)
+                    mask_hist = df['descricao_historico_empenho'].astype(str).str.contains(termo, case=False, na=False) if 'descricao_historico_empenho' in df.columns else pd.Series(False, index=df.index)
+                    mask_contrato = df['numero_contrato'].astype(str).str.contains(termo, case=False, na=False) if 'numero_contrato' in df.columns else pd.Series(False, index=df.index)
 
                     df.loc[mask_hist, 'match_reason'] = "Encontrado no Histórico"
                     df.loc[mask_cred, 'match_reason'] = "Credor cadastrado"
@@ -324,9 +319,9 @@ def render_consultation_page():
 
                 elif categoria_sel == "Notas de Pagamento":
                     mask_num_emp = df['numero_empenho'].astype(str).str.contains(termo, case=False, na=False)
-                    mask_num_pg = df['numero_nota_pagamento'].astype(str).str.contains(termo, case=False, na=False)
-                    mask_resp = df['nome_responsavel_pagamento'].astype(str).str.contains(termo, case=False, na=False)
-                    mask_doc_cx = df['numero_documento_caixa'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_num_pg = df['numero_nota_pagamento'].astype(str).str.contains(termo, case=False, na=False) if 'numero_nota_pagamento' in df.columns else pd.Series(False, index=df.index)
+                    mask_resp = df['nome_responsavel_pagamento'].astype(str).str.contains(termo, case=False, na=False) if 'nome_responsavel_pagamento' in df.columns else pd.Series(False, index=df.index)
+                    mask_doc_cx = df['numero_documento_caixa'].astype(str).str.contains(termo, case=False, na=False) if 'numero_documento_caixa' in df.columns else pd.Series(False, index=df.index)
 
                     df.loc[mask_doc_cx, 'match_reason'] = "Nº Doc Caixa"
                     df.loc[mask_resp, 'match_reason'] = "Responsável Pagto"
@@ -337,34 +332,48 @@ def render_consultation_page():
                 elif categoria_sel == "Liquidações":
                     mask_num_emp = df['numero_empenho'].astype(str).str.contains(termo, case=False, na=False)
                     
-                    col_num_liq = 'numero_nota_liquidacao' if 'numero_nota_liquidacao' in df.columns else 'numero_nota_fiscal'
-                    col_hist_liq = 'descricao_historico_nota_liquidacao' if 'descricao_historico_nota_liquidacao' in df.columns else 'municipio_referencia'
+                    # Identificação Dinâmica Preventiva das Colunas de Liquidação
+                    if 'numero_nota_liquidacao' in df.columns:
+                        col_num_liq = 'numero_nota_liquidacao'
+                    elif 'numero_nota_fiscal' in df.columns:
+                        col_num_liq = 'numero_nota_fiscal'
+                    elif 'numero_documento' in df.columns:
+                        col_num_liq = 'numero_documento'
+                    else:
+                        col_num_liq = None
 
-                    mask_num_liq = df[col_num_liq].astype(str).str.contains(termo, case=False, na=False)
-                    mask_hist_liq = df[col_hist_liq].astype(str).str.contains(termo, case=False, na=False)
+                    if 'descricao_historico_nota_liquidacao' in df.columns:
+                        col_hist_liq = 'descricao_historico_nota_liquidacao'
+                    elif 'historico' in df.columns:
+                        col_hist_liq = 'historico'
+                    else:
+                        col_hist_liq = None
+
+                    mask_num_liq = df[col_num_liq].astype(str).str.contains(termo, case=False, na=False) if col_num_liq else pd.Series(False, index=df.index)
+                    mask_hist_liq = df[col_hist_liq].astype(str).str.contains(termo, case=False, na=False) if col_hist_liq else pd.Series(False, index=df.index)
                     
-                    df.loc[mask_hist_liq, 'match_reason'] = "Histórico de Liquidação"
-                    df.loc[mask_num_liq, 'match_reason'] = "Nº Liquidação"
+                    if col_hist_liq: df.loc[mask_hist_liq, 'match_reason'] = "Histórico de Liquidação"
+                    if col_num_liq: df.loc[mask_num_liq, 'match_reason'] = "Nº Liquidação"
                     df.loc[mask_num_emp, 'match_reason'] = "Nº Empenho"
                     mask = mask_num_emp | mask_num_liq | mask_hist_liq
 
                 elif categoria_sel == "Itens de Notas Fiscais":
-                    col_emp_item = 'numero_nota_empenho' if 'numero_nota_empenho' in df.columns else 'numero_empenho'
+                    col_emp_item = 'numero_nota_empenho' if 'numero_nota_empenho' in df.columns else ('numero_empenho' if 'numero_empenho' in df.columns else None)
                     
-                    mask_num_emp = df[col_emp_item].astype(str).str.contains(termo, case=False, na=False)
-                    mask_desc_item = df['descricao_item'].astype(str).str.contains(termo, case=False, na=False)
-                    mask_num_nf = df['numero_nota_fiscal'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_num_emp = df[col_emp_item].astype(str).str.contains(termo, case=False, na=False) if col_emp_item else pd.Series(False, index=df.index)
+                    mask_desc_item = df['descricao_item'].astype(str).str.contains(termo, case=False, na=False) if 'descricao_item' in df.columns else pd.Series(False, index=df.index)
+                    mask_num_nf = df['numero_nota_fiscal'].astype(str).str.contains(termo, case=False, na=False) if 'numero_nota_fiscal' in df.columns else pd.Series(False, index=df.index)
 
                     df.loc[mask_num_nf, 'match_reason'] = "Nº Nota Fiscal"
                     df.loc[mask_desc_item, 'match_reason'] = "Descrição do Item"
-                    df.loc[mask_num_emp, 'match_reason'] = "Nº Empenho"
+                    if col_emp_item: df.loc[mask_num_emp, 'match_reason'] = "Nº Empenho"
                     mask = mask_num_emp | mask_desc_item | mask_num_nf
 
-                else:
+                else: # Notas Fiscais
                     mask_num_emp = df['numero_empenho'].astype(str).str.contains(termo, case=False, na=False)
-                    mask_num_nf = df['numero_nota_fiscal'].astype(str).str.contains(termo, case=False, na=False)
-                    mask_emit = df['cpf_cnpj_emitente'].astype(str).str.contains(termo, case=False, na=False)
-                    mask_chave = df['numero_chave_acesso_nfe'].astype(str).str.contains(termo, case=False, na=False)
+                    mask_num_nf = df['numero_nota_fiscal'].astype(str).str.contains(termo, case=False, na=False) if 'numero_nota_fiscal' in df.columns else pd.Series(False, index=df.index)
+                    mask_emit = df['cpf_cnpj_emitente'].astype(str).str.contains(termo, case=False, na=False) if 'cpf_cnpj_emitente' in df.columns else pd.Series(False, index=df.index)
+                    mask_chave = df['numero_chave_acesso_nfe'].astype(str).str.contains(termo, case=False, na=False) if 'numero_chave_acesso_nfe' in df.columns else pd.Series(False, index=df.index)
 
                     df.loc[mask_chave, 'match_reason'] = "Chave de Acesso NF"
                     df.loc[mask_emit, 'match_reason'] = "CPF/CNPJ Emitente"
@@ -374,7 +383,6 @@ def render_consultation_page():
                 
                 df = df[mask]
 
-            # Salva o resultado e os parâmetros nos estados de sessão
             st.session_state.df_resultado = df
             st.session_state.consulta_realizada = True
             st.session_state.filtros_aplicados = {
@@ -390,7 +398,6 @@ def render_consultation_page():
             st.session_state.consulta_realizada = False
             st.warning(f"Nenhum arquivo encontrado para {categoria_sel} em {ano_sel}. Certifique-se de realizar a extração primeiro.")
 
-    # Renderiza os resultados
     if st.session_state.consulta_realizada:
         df = st.session_state.df_resultado
         filtros = st.session_state.filtros_aplicados
@@ -422,7 +429,7 @@ def render_consultation_page():
                     status_badge_html = f'<span class="status-badge {status_class}">{row["status_pagamento"]}</span>'
 
                 # ==============================================================================
-                # TRATAMENTO DE VARIÁVEIS POR CATEGORIA DE VISUALIZAÇÃO
+                # TRATAMENTO DE VARIÁVEIS POR CATEGORIA DE VISUALIZAÇÃO (Proteção Extra de Atributos)
                 # ==============================================================================
                 if filtros['categoria_sel'] == "Notas de Empenho":
                     id_doc = f"EMPENHO: {row.get('numero_empenho', 'N/A')}"
@@ -445,13 +452,16 @@ def render_consultation_page():
                     val_pag = formatar_moeda(row.get('valor_nota_pagamento', 0.0))
 
                 elif filtros['categoria_sel'] == "Liquidações":
-                    id_doc = f"LIQUIDAÇÃO: {row.get('numero_nota_liquidacao', 'N/A')}"
+                    num_liq_val = row.get('numero_nota_liquidacao', row.get('numero_nota_fiscal', row.get('numero_documento', 'N/A')))
+                    id_doc = f"LIQUIDAÇÃO: {num_liq_val}"
                     entidade = f"Ref. Empenho: {row.get('numero_empenho', 'N/A')}"
-                    detalhe = row.get('descricao_historico_nota_liquidacao', 'Sem histórico de liquidação')
-                    data_item = formatar_data(row.get('data_nota_liquidacao'))
+                    detalhe = row.get('descricao_historico_nota_liquidacao', row.get('historico', 'Sem histórico de liquidação'))
+                    
+                    data_liq_col = row.get('data_nota_liquidacao', row.get('data_liquidacao', row.get('data_emissao', '')))
+                    data_item = formatar_data(data_liq_col)
                     
                     val_emp = "---"
-                    val_liq = formatar_moeda(row.get('valor_bruto_nota_liquidacao', row.get('valor_liquidado', 0.0)))
+                    val_liq = formatar_moeda(row.get('valor_bruto_nota_liquidacao', row.get('valor_liquidado', row.get('valor_bruto', 0.0))))
                     val_pag = "---"
 
                 elif filtros['categoria_sel'] == "Itens de Notas Fiscais":
@@ -461,7 +471,7 @@ def render_consultation_page():
                     data_item = formatar_data(row.get('data_emissao', ''))
                     
                     val_emp = "---"
-                    val_liq = formatar_moeda(row.get('valor_total_item', 0.0)) # Representa o valor do item físico
+                    val_liq = formatar_moeda(row.get('valor_total_item', 0.0)) 
                     val_pag = "---"
                     
                 else: # Notas Fiscais
@@ -511,9 +521,6 @@ def render_consultation_page():
                 
                 st.markdown(card_html, unsafe_allow_html=True)
                 
-                # ==============================================================================
-                # BOTÃO DE DETALHES
-                # ==============================================================================
                 if st.button("DETALHES 🔎", key=f"btn_det_{index}", use_container_width=True):
                     if filtros['categoria_sel'] == "Notas de Pagamento":
                         exibir_modal_detalhes_pagamento(
@@ -532,11 +539,9 @@ def render_consultation_page():
                             id_unico=index
                         )
 
-            # Recuo correto (identação) para o restante dos elementos pós-loop
             if len(df) > limite:
                 st.info(f"Exibindo os {limite} primeiros resultados para garantir excelente tempo de carregamento da interface.")
 
-            # Espaçamento estético entre os cards
             st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
 
             st.divider()
