@@ -73,6 +73,9 @@ def render_extraction_page():
             # Reseta os logs e a lista de arquivos criados
             st.session_state.log_messages = []
             st.session_state.arquivos_criados = []
+
+            ano_para_extrair = int(st.session_state.ano_input)
+            mes_para_extrair = st.session_state.mes_input
             
             # Marca o timestamp de início para sabermos quais arquivos foram criados NESTA rodada
             inicio_extracao = time.time()
@@ -108,8 +111,8 @@ def render_extraction_page():
             with st.spinner("Buscando dados no TCE..."):
                 try:
                     executar_pipeline(
-                        st.session_state.ano_input, 
-                        mes_selecionado=st.session_state.mes_input, 
+                        ano_para_extrair, 
+                        mes_selecionado=mes_para_extrair, 
                         municipio_selecionado=municipio_selecionado, 
                         log_func=stream_log
                     )

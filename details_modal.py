@@ -204,46 +204,79 @@ def exibir_modal_detalhes(row, categoria, ano, codigo_mun, id_unico=None):
     # --- 1. Movimentações da Liquidação (Lado Esquerdo) ---
     with col_liq:
         st.markdown("#### 🔍 MOVIMENTAÇÕES DA LIQUIDAÇÃO")
-        arquivos_nfe = obter_caminho_arquivos_modal("notas_fiscais", ano, codigo_mun)
+        arquivos_liq = obter_caminho_arquivos_modal("liquidacoes", ano, codigo_mun)
         
-        if arquivos_nfe:
-            df_nfe = carregar_e_filtrar_modal(arquivos_nfe)
-            if not df_nfe.empty:
+        if arquivos_liq:
+            df_liq = carregar_e_filtrar_modal(arquivos_liq)
+            if not df_liq.empty:
                 # Normalização segura das chaves na base de Notas Fiscais
-                df_nfe['num_emp_norm'] = normalizar_serie_pandas(df_nfe['numero_empenho'])
-                df_nfe['cod_mun_norm'] = normalizar_serie_pandas(df_nfe['codigo_municipio'])
-                df_nfe['cod_org_norm'] = normalizar_serie_pandas(df_nfe['codigo_orgao'])
-                
-                # Unidade orçamentária é opcional em algumas bases auxiliares; tratamos se existir
-                if 'codigo_unidade_orcamentaria' in df_nfe.columns:
-                    df_nfe['cod_uni_norm'] = normalizar_serie_pandas(df_nfe['codigo_unidade_orcamentaria'])
-                    condicao_unidade = (df_nfe['cod_uni_norm'] == cod_unid_busca)
-                else:
-                    condicao_unidade = True
+                df_liq['num_emp_norm'] = normalizar_serie_pandas(df_liq['numero_empenho'])
+                df_liq['cod_mun_norm'] = normalizar_serie_pandas(df_liq['codigo_municipio'])
+                df_liq['cod_org_norm'] = normalizar_serie_pandas(df_liq['codigo_orgao'])
 
-                # Aplicação do Filtro Consistente
-                df_nfe_filtrada = df_nfe[
-                    (df_nfe['num_emp_norm'] == num_empenho_busca) &
-                    (df_nfe['cod_mun_norm'] == cod_mun_busca) &
-                    (df_nfe['cod_org_norm'] == cod_orgao_busca) &
-                    condicao_unidade
+                df_liq_filtrada = df_liq[
+                    (df_liq['num_emp_norm'] == num_empenho_busca) &
+                    (df_liq['cod_mun_norm'] == cod_mun_busca)
                 ]
                 
-                if not df_nfe_filtrada.empty:
+                if not df_liq_filtrada.empty:
                     df_exibir_liq = pd.DataFrame()
-                    df_exibir_liq['Data'] = df_nfe_filtrada['data_liquidacao'].apply(formatar_data_modal)
-                    df_exibir_liq['Nota fiscal'] = df_nfe_filtrada['numero_nota_fiscal'].astype(str)
+
+                    # 1. Identifica e formata a data da liquidação dinamicamente
+                    if 'data_nota_liquidacao' in df_liq_filtrada.columns:
+                        col_data_liq = 'data_nota_liquidacao'
+                    elif 'data_liquidacao' in df_liq_filtrada.columns:
+                        col_data_liq = 'data_liquidacao'
+                    elif 'data_emissao' in df_liq_filtrada.columns:
+                        col_data_liq = 'data_emissao'
+                    else:
+                        col_data_liq = None
+
+                    if col_data_liq:
+                        df_exibir_liq['Data'] = df_liq_filtrada[col_data_liq].apply(formatar_data_modal)
+                    else:
+                        df_exibir_liq['Data'] = "Não informada"
                     
-                    # Trata variação de coluna valor_liquido / valor_bruto
-                    col_valor_liq = 'valor_liquido' if 'valor_liquido' in df_nfe_filtrada.columns else 'valor_bruto'
-                    df_exibir_liq['Valor'] = df_nfe_filtrada[col_valor_liq].apply(lambda x: f"R$ {formatar_moeda_modal(x)}")
+                    # 2. 🛡️ FIX KEYERROR: Identifica o número do documento de liquidação de forma resiliente
+                    if 'numero_nota_liquidacao' in df_liq_filtrada.columns:
+                        col_num_liq = 'numero_nota_liquidacao'
+                    elif 'numero_nota_fiscal' in df_liq_filtrada.columns:
+                        col_num_liq = 'numero_nota_fiscal'
+                    elif 'numero_documento' in df_liq_filtrada.columns:
+                        col_num_liq = 'numero_documento'
+                    else:
+                        col_num_liq = None
+
+                    if col_num_liq:
+                        df_exibir_liq['Nº Liquidação'] = df_liq_filtrada[col_num_liq].astype(str)
+                    else:
+                        # Fallback amigável: se não achar o documento da liq, exibe o do empenho original
+                        df_exibir_liq['Nº Liquidação'] = df_liq_filtrada['numero_empenho'].astype(str)
+                    
+                    # 3. Identifica e calcula o valor bruto/líquido liquidado
+                    if 'valor_bruto_nota_liquidacao' in df_liq_filtrada.columns:
+                        col_valor_liq = 'valor_bruto_nota_liquidacao'
+                    elif 'valor_liquidado' in df_liq_filtrada.columns:
+                        col_valor_liq = 'valor_liquidado'
+                    elif 'valor_bruto' in df_liq_filtrada.columns:
+                        col_valor_liq = 'valor_bruto'
+                    elif 'valor_nota_fiscal' in df_liq_filtrada.columns:
+                        col_valor_liq = 'valor_nota_fiscal'
+                    else:
+                        col_valor_liq = None
+
+                    if col_valor_liq:
+                        df_exibir_liq['Valor'] = df_liq_filtrada[col_valor_liq].apply(lambda x: f"R$ {formatar_moeda_modal(x)}")
+                        total_liq = df_liq_filtrada[col_valor_liq].sum()
+                    else:
+                        df_exibir_liq['Valor'] = "R$ 0,00"
+                        total_liq = 0.0
                     
                     st.dataframe(df_exibir_liq, use_container_width=True, hide_index=True)
                     
-                    total_liq = df_nfe_filtrada[col_valor_liq].sum()
                     st.markdown(
                         f"<div style='display: flex; justify-content: space-between; font-size: 0.85rem; color: #555; font-weight: bold;'>"
-                        f"<span>Quantidade: {len(df_nfe_filtrada)}</span>"
+                        f"<span>Quantidade: {len(df_liq_filtrada)}</span>"
                         f"<span>Valor total: R$ {formatar_moeda_modal(total_liq)}</span>"
                         f"</div>", 
                         unsafe_allow_html=True

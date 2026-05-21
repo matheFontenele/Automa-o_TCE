@@ -8,45 +8,68 @@ from tqdm import tqdm
 
 # --- CONFIGURAÇÕES GERAIS ---
 def carregar_municipios():
-    with open('municipios.json', 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    return data['elements']
+    try:
+        with open('municipios.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data['elements']
+    except FileNotFoundError:
+        # Fallback de segurança caso o arquivo não seja achado localmente
+        return []
 
 def processar_lote(task):
-    """Executa o download e salvamento de um único lote."""
+    """
+    Executa o download de um único lote e retorna o status e a mensagem de log.
+    Não interage diretamente com o Streamlit (Thread-safe).
+    """
     caminho_arquivo = task['caminho_arquivo']
+    nome_arquivo = os.path.basename(caminho_arquivo)
     
     # Checkpoint: se o arquivo já existe, pula
     if os.path.exists(caminho_arquivo):
-        return "IGNORADO"
+        return "IGNORADO", f"⏭️ Ignorado: {nome_arquivo} já existe."
 
     try:
+        print(f"DEBUG REQUISIÇÃO: {task['url']} com parâmetros {task['params']}")
+        
         response = requests.get(task['url'], headers={"Accept": "application/json"}, params=task['params'], timeout=30)
+        
         if response.status_code == 200:
             dados = response.json().get("elements", [])
             if dados:
-                for item in dados:
-                    item['municipio_referencia'] = task['municipio_nome']
-                
                 df = pd.DataFrame(dados)
-                # Salvando em Parquet para performance e economia de espaço
+                
+                # ==============================================================
+                # 🛡️ FILTRO DEFENSIVO CONTRA O BUG DE FALLBACK DO TCE-CE
+                # ==============================================================
+                ano_esperado = str(task['params']['exercicio_orcamento'])[:4]
+                
+                if 'exercicio_orcamento' in df.columns:
+                    df['exercicio_orcamento_str'] = df['exercicio_orcamento'].astype(str)
+                    # Mantém APENAS as linhas que começam com o ano correto (ex: '202500')
+                    df = df[df['exercicio_orcamento_str'].str.startswith(ano_esperado)]
+                    df = df.drop(columns=['exercicio_orcamento_str'])
+                
+                # Se o TCE só mandou lixo de outro ano, o DataFrame ficou vazio após o filtro
+                if df.empty:
+                    return "VAZIO", f"⚠️ Vazio: {nome_arquivo} - API retornou dados de outro ano (Descartado)."
+                # ==============================================================
+
+                # Adiciona o município de referência nas linhas válidas que restaram
+                df['municipio_referencia'] = task['municipio_nome']
+                
+                # Salvando em Parquet o resultado limpo
                 df.to_parquet(caminho_arquivo, engine='pyarrow', compression='snappy')
-                log_func(f"✅ Criado com sucesso: {nome_arquivo}")
-                return "BAIXADO"
+                return "BAIXADO", f"✅ Criado com sucesso: {nome_arquivo}"
 
-        # Se a requisição veio 200 mas o TCE não retornou nenhum dado (vazio)        
-        return "VAZIO"
-        log_func(f"⚠️ Vazio: {nome_arquivo} - Resposta 200 mas sem dados.")
+        return "VAZIO", f"⚠️ Vazio: {nome_arquivo} - Sem registros no TCE."
 
-    except Exception:
-        return "ERRO_CONEXAO"
-        log_func(f"❌ Erro HTTP {response.status_code} em: {nome_arquivo}")
+    except Exception as e:
+        return "ERRO_CONEXAO", f"❌ Erro em {nome_arquivo}: {str(e)}"
 
 def gerar_tarefas(ano, mes_selecionado, municipio_selecionado):
     """Gera a lista de tarefas baseada nos filtros aplicados."""
     municipios = carregar_municipios()
     
-    # Filtra municípios se solicitado
     if municipio_selecionado:
         municipios = [m for m in municipios if m['codigo_municipio'] == municipio_selecionado['codigo_municipio']]
 
@@ -56,11 +79,8 @@ def gerar_tarefas(ano, mes_selecionado, municipio_selecionado):
     if mes_selecionado == "Todos" or mes_selecionado is None or mes_selecionado == "":
         meses = range(1, 13)
     else:
-        # Garante que seja um inteiro (caso o Streamlit passe string)
         meses = [int(mes_selecionado)]
-    # -------------------------------
 
-    # Configuração dos endpoints
     endpoints_mensais = [
         ("notas_empenho", "https://api-dados-abertos.tce.ce.gov.br/sim/notas_empenhos"),
         ("notas_fiscais", "https://api-dados-abertos.tce.ce.gov.br/sim/notas_fiscais"),
@@ -101,7 +121,6 @@ def executar_pipeline(ano, mes_selecionado=None, municipio_selecionado=None, log
     os.makedirs('data', exist_ok=True)
 
     log_func(f"[{ano}] Iniciando extração...")
-    
     tarefas = gerar_tarefas(ano, mes_selecionado, municipio_selecionado)
     
     if not tarefas:
@@ -114,43 +133,43 @@ def executar_pipeline(ano, mes_selecionado=None, municipio_selecionado=None, log
     ignorados = 0
     erros = 0
     
-    # Execução Paralela
+    # Execução Paralela Monitorada (Thread-Safe para Streamlit)
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        # Usamos tqdm para barra de progresso no terminal
-        resultados = list(tqdm(executor.map(processar_lote, tarefas), total=len(tarefas), desc=f"Baixando {ano}"))
-
-        # Contabilizando os resultados
-        for res in resultados:
-            if res == "BAIXADO":
-                 baixados += 1
-            elif res == "IGNORADO":
-                 ignorados += 1
-            else:
-                 erros += 1
+        # Envia as tarefas para execução
+        futuros = {executor.submit(processar_lote, tarefa): tarefa for tarefa in tarefas}
+        
+        # Conforme cada thread conclui, pegamos o log e descarregamos na thread principal
+        for futuro in tqdm(concurrent.futures.as_completed(futuros), total=len(tarefas), desc=f"Baixando {ano}"):
+            try:
+                status, msg_log = futuro.result()
+                log_func(msg_log)  # Roda com segurança na thread mãe do Streamlit
+                
+                if status == "BAIXADO":
+                    baixados += 1
+                elif status == "IGNORADO":
+                    ignorados += 1
+                else:
+                    erros += 1
+            except Exception as e:
+                log_func(f"❌ Erro crítico no processamento de uma thread: {e}")
+                erros += 1
 
         log_func(f"[{ano}] Resumo: {baixados} novos, {ignorados} já existiam, {erros} falhas/vazios.")
 
-# Função principal para execução direta
+# Função principal para execução direta via terminal
 if __name__ == "__main__":
-    # Valores padrão de segurança
     ano_inicio = 2025
     ano_fim = 2025
 
-    # Se o usuário passou apenas 1 argumento (ex: python main.py 2024)
     if len(sys.argv) == 2:
         ano_inicio = int(sys.argv[1])
         ano_fim = ano_inicio
-        
-    # Se o usuário passou 2 argumentos (ex: python main.py 2020 2025)
     elif len(sys.argv) >= 3:
-        # Usamos min e max para garantir que o menor ano seja sempre o início, 
-        # mesmo que você digite invertido no terminal
         ano_inicio = min(int(sys.argv[1]), int(sys.argv[2]))
         ano_fim = max(int(sys.argv[1]), int(sys.argv[2]))
 
     print(f"Iniciando extração paralela para o período de {ano_inicio} a {ano_fim}...")
 
-    # Loop que passa por cada ano do intervalo (o +1 garante que o último ano seja incluído)
     for ano_atual in range(ano_inicio, ano_fim + 1):
         print(f"\n[{ano_atual}] - Iniciando processamento do ano...")
         executar_pipeline(ano_atual)
