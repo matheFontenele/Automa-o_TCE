@@ -257,16 +257,31 @@ def render_consultation_page():
                     df['numero_empenho'] = df['numero_empenho'].astype(str)
                     df['chave_composta'] = df['codigo_municipio'].str.strip() + "_" + df['codigo_orgao'].str.strip() + "_" + df['numero_empenho'].str.strip()
                     
-                    arq_nf = obter_caminho_arquivos("notas_fiscais", ano_sel, codigo_mun_busca)
-                    df_nf = carregar_e_filtrar(arq_nf)
+                    # --- NOVA LÓGICA DE AGREGAÇÃO DO LIQUIDADO ---
+                    arq_liq = obter_caminho_arquivos("liquidacoes", ano_sel, codigo_mun_busca)
+                    df_liq = carregar_e_filtrar(arq_liq)
                     liq_map = {}
 
-                    if not df_nf.empty:
-                        df_nf['codigo_municipio'] = df_nf['codigo_municipio'].astype(str)
-                        df_nf['codigo_orgao'] = df_nf['codigo_orgao'].astype(str)
-                        df_nf['numero_empenho'] = df_nf['numero_empenho'].astype(str)
-                        df_nf['chave_composta'] = df_nf['codigo_municipio'].str.strip() + "_" + df_nf['codigo_orgao'].str.strip() + "_" + df_nf['numero_empenho'].str.strip()
-                        liq_map = df_nf.groupby('chave_composta')['valor_bruto'].sum().to_dict()
+                    if not df_liq.empty:
+                        df_liq['codigo_municipio'] = df_liq['codigo_municipio'].astype(str)
+                        df_liq['codigo_orgao'] = df_liq['codigo_orgao'].astype(str)
+                        df_liq['numero_empenho'] = df_liq['numero_empenho'].astype(str)
+                        df_liq['chave_composta'] = df_liq['codigo_municipio'].str.strip() + "_" + df_liq['codigo_orgao'].str.strip() + "_" + df_liq['numero_empenho'].str.strip()
+                        
+                        # Determina dinamicamente a coluna de valor existente no arquivo de liquidações
+                        if 'valor_bruto_nota_liquidacao' in df_liq.columns:
+                            col_valor_liq = 'valor_bruto_nota_liquidacao'
+                        elif 'valor_liquidado' in df_liq.columns:
+                            col_valor_liq = 'valor_liquidado'
+                        elif 'valor_bruto' in df_liq.columns:
+                            col_valor_liq = 'valor_bruto'
+                        else:
+                            col_valor_liq = None
+                            
+                        if col_valor_liq:
+                            df_liq[col_valor_liq] = pd.to_numeric(df_liq[col_valor_liq], errors='coerce').fillna(0.0)
+                            liq_map = df_liq.groupby('chave_composta')[col_valor_liq].sum().to_dict()
+                    # ---------------------------------------------
                        
                     arq_pg = obter_caminho_arquivos("notas_pagamentos", ano_sel, codigo_mun_busca)
                     df_pg = carregar_e_filtrar(arq_pg)
@@ -277,6 +292,8 @@ def render_consultation_page():
                         df_pg['codigo_orgao'] = df_pg['codigo_orgao'].astype(str)
                         df_pg['numero_empenho'] = df_pg['numero_empenho'].astype(str)
                         df_pg['chave_composta'] = df_pg['codigo_municipio'].str.strip() + "_" + df_pg['codigo_orgao'].str.strip() + "_" + df_pg['numero_empenho'].str.strip()
+                        
+                        df_pg['valor_nota_pagamento'] = pd.to_numeric(df_pg['valor_nota_pagamento'], errors='coerce').fillna(0.0)
                         pag_map = df_pg.groupby('chave_composta')['valor_nota_pagamento'].sum().to_dict()
                    
                     df['valor_liquidado'] = df['chave_composta'].map(liq_map).fillna(0.0)
@@ -298,7 +315,7 @@ def render_consultation_page():
                         df = df[df['status_pagamento'] == pagamento_sel]
 
             # ==============================================================================
-            # BLOCO DE FILTROS CONDICIONAIS DE BUSCA GERAL (Totalmente Blindado contra KeyError)
+            # BLOCO DE FILTROS CONDICIONAIS DE BUSCA GERAL
             # ==============================================================================
             if filtro_geral and not df.empty:
                 termo = str(filtro_geral).strip()
@@ -332,7 +349,6 @@ def render_consultation_page():
                 elif categoria_sel == "Liquidações":
                     mask_num_emp = df['numero_empenho'].astype(str).str.contains(termo, case=False, na=False)
                     
-                    # Identificação Dinâmica Preventiva das Colunas de Liquidação
                     if 'numero_nota_liquidacao' in df.columns:
                         col_num_liq = 'numero_nota_liquidacao'
                     elif 'numero_nota_fiscal' in df.columns:
@@ -349,11 +365,21 @@ def render_consultation_page():
                     else:
                         col_hist_liq = None
 
-                    mask_num_liq = df[col_num_liq].astype(str).str.contains(termo, case=False, na=False) if col_num_liq else pd.Series(False, index=df.index)
-                    mask_hist_liq = df[col_hist_liq].astype(str).str.contains(termo, case=False, na=False) if col_hist_liq else pd.Series(False, index=df.index)
+                    if col_num_liq is not None and col_num_liq in df.columns:
+                        mask_num_liq = df[col_num_liq].astype(str).str.contains(termo, case=False, na=False)
+                    else:
+                        mask_num_liq = pd.Series(False, index=df.index)
+
+                    if col_hist_liq is not None and col_hist_liq in df.columns:
+                        mask_hist_liq = df[col_hist_liq].astype(str).str.contains(termo, case=False, na=False)
+                    else:
+                        mask_hist_liq = pd.Series(False, index=df.index)
                     
-                    if col_hist_liq: df.loc[mask_hist_liq, 'match_reason'] = "Histórico de Liquidação"
-                    if col_num_liq: df.loc[mask_num_liq, 'match_reason'] = "Nº Liquidação"
+                    if col_hist_liq and col_hist_liq in df.columns: 
+                        df.loc[mask_hist_liq, 'match_reason'] = "Histórico de Liquidação"
+                    if col_num_liq and col_num_liq in df.columns: 
+                        df.loc[mask_num_liq, 'match_reason'] = "Nº Liquidação"
+                        
                     df.loc[mask_num_emp, 'match_reason'] = "Nº Empenho"
                     mask = mask_num_emp | mask_num_liq | mask_hist_liq
 
@@ -429,7 +455,7 @@ def render_consultation_page():
                     status_badge_html = f'<span class="status-badge {status_class}">{row["status_pagamento"]}</span>'
 
                 # ==============================================================================
-                # TRATAMENTO DE VARIÁVEIS POR CATEGORIA DE VISUALIZAÇÃO (Proteção Extra de Atributos)
+                # TRATAMENTO DE VARIÁVEIS POR CATEGORIA DE VISUALIZAÇÃO
                 # ==============================================================================
                 if filtros['categoria_sel'] == "Notas de Empenho":
                     id_doc = f"EMPENHO: {row.get('numero_empenho', 'N/A')}"

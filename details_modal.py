@@ -344,9 +344,15 @@ def exibir_modal_detalhes(row, categoria, ano, codigo_mun, id_unico=None):
     
     # Botão de download/geração do PDF
     try:
-        pdf_data = gerar_pdf_empenho(row)
+        # Recupera as tabelas filtradas escopadas ou define None caso estejam vazias
+        enviar_liq = df_liq_filtrada if ('df_liq_filtrada' in locals() and not df_liq_filtrada.empty) else None
+        enviar_pag = df_pag_filtrado if ('df_pag_filtrado' in locals() and not df_pag_filtrado.empty) else None
+        
+        # Gera o PDF injetando os dados coletados lado a lado no modal
+        pdf_data = gerar_pdf_empenho(row, df_liq_filtrada=enviar_liq, df_pag_filtrado=enviar_pag)
+        
         st.download_button(
-            label="🖨️ Imprimir Detalhes do Empenho (PDF)",
+            label="🖨️ Imprimir Detalhes do Empenho Completo (PDF)",
             data=pdf_data,
             file_name=f"Empenho_{row.get('numero_empenho', 'N/A')}.pdf",
             mime="application/pdf",

@@ -29,7 +29,6 @@ def processar_lote(task):
         return "IGNORADO", f"⏭️ Ignorado: {nome_arquivo} já existe."
 
     try:
-        print(f"DEBUG REQUISIÇÃO: {task['url']} com parâmetros {task['params']}")
         
         response = requests.get(task['url'], headers={"Accept": "application/json"}, params=task['params'], timeout=30)
         

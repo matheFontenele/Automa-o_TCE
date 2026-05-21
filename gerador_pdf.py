@@ -31,10 +31,10 @@ def formatar_data_pdf(data_raw):
         return "Não Informada"
 
 # ==============================================================================
-# GERADOR DO PDF
+# GERADOR DO PDF ATUALIZADO
 # ==============================================================================
-def gerar_pdf_empenho(row):
-    """Gera o PDF estruturado do empenho usando ReportLab."""
+def gerar_pdf_empenho(row, df_liq_filtrada=None, df_pag_filtrado=None):
+    """Gera o PDF estruturado do empenho com anexos de liquidações e pagamentos."""
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -62,7 +62,7 @@ def gerar_pdf_empenho(row):
         fontSize=11,
         leading=14,
         textColor=colors.HexColor('#0f172a'),
-        spaceBefore=12,
+        spaceBefore=14,
         spaceAfter=6,
         keepWithNext=True
     )
@@ -79,6 +79,13 @@ def gerar_pdf_empenho(row):
         'TableBodyBold',
         parent=body_style,
         fontName='Helvetica-Bold'
+    )
+    
+    header_table_style = ParagraphStyle(
+        'HeaderTable',
+        parent=body_style,
+        fontName='Helvetica-Bold',
+        textColor=colors.HexColor('#1e293b')
     )
 
     story.append(Paragraph(f"TCE-CE — DETALHES DO EMPENHO Nº {row.get('numero_empenho', 'N/A')}", title_style))
@@ -105,7 +112,7 @@ def gerar_pdf_empenho(row):
         criar_linha_tabela("Número de licitação:", num_licitacao_str)
     ]
     
-    t_empenho = Table(dados_empenho, colWidths=[150, 350])
+    t_empenho = Table(dados_empenho, colWidths=[140, 360])
     t_empenho.setStyle(TableStyle([
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#f8fafc')),
@@ -113,7 +120,6 @@ def gerar_pdf_empenho(row):
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]))
     story.append(t_empenho)
-    story.append(Spacer(1, 10))
 
     # Seção 2: Informações de Orçamento
     story.append(Paragraph("INFORMAÇÕES DE ORÇAMENTO", section_style))
@@ -131,7 +137,7 @@ def gerar_pdf_empenho(row):
         criar_linha_tabela("Fonte de recurso:", row.get('fonte_recurso', 'Não Informada'))
     ]
     
-    t_orcamento = Table(dados_orcamento, colWidths=[150, 350])
+    t_orcamento = Table(dados_orcamento, colWidths=[140, 360])
     t_orcamento.setStyle(TableStyle([
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#f8fafc')),
@@ -139,7 +145,6 @@ def gerar_pdf_empenho(row):
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]))
     story.append(t_orcamento)
-    story.append(Spacer(1, 10))
 
     # Seção 3: Histórico
     story.append(Paragraph("INFORMAÇÕES DO HISTÓRICO", section_style))
@@ -148,9 +153,99 @@ def gerar_pdf_empenho(row):
     t_historico.setStyle(TableStyle([
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f8fafc')),
-        ('PADDING', (0,0), (-1,-1), 10),
+        ('PADDING', (0,0), (-1,-1), 8),
     ]))
     story.append(t_historico)
+
+    # ==============================================================================
+    # SEÇÃO INTERMEDIÁRIA ADICIONADA: LIQUIDAÇÕES (DINÂMICA)
+    # ==============================================================================
+    if df_liq_filtrada is not None and not df_liq_filtrada.empty:
+        story.append(Paragraph("MOVIMENTAÇÕES DA LIQUIDAÇÃO", section_style))
+        
+        # Montagem do cabeçalho da tabela de liquidações
+        t_liq_dados = [[
+            Paragraph("Data", header_table_style),
+            Paragraph("Nº Liquidação", header_table_style),
+            Paragraph("Valor", header_table_style)
+        ]]
+        
+        # Identificação resiliente das colunas
+        col_data_liq = next((c for c in ['data_nota_liquidacao', 'data_liquidacao', 'data_emissao'] if c in df_liq_filtrada.columns), None)
+        col_num_liq = next((c for c in ['numero_nota_liquidacao', 'numero_nota_fiscal', 'numero_documento'] if c in df_liq_filtrada.columns), None)
+        col_valor_liq = next((c for c in ['valor_bruto_nota_liquidacao', 'valor_liquidado', 'valor_bruto', 'valor_nota_fiscal'] if c in df_liq_filtrada.columns), None)
+        
+        total_liq = 0.0
+        for _, l_row in df_liq_filtrada.iterrows():
+            d_val = formatar_data_pdf(l_row[col_data_liq]) if col_data_liq else "Não informada"
+            n_val = str(l_row[col_num_liq]) if col_num_liq else str(l_row.get('numero_empenho', 'N/A'))
+            
+            v_raw = l_row[col_valor_liq] if col_valor_liq else 0.0
+            try: total_liq += float(v_raw)
+            except: pass
+            v_val = f"R$ {formatar_moeda_pdf(v_raw)}"
+            
+            t_liq_dados.append([Paragraph(d_val, body_style), Paragraph(n_val, body_style), Paragraph(v_val, body_style)])
+            
+        # Linha de Totalizador
+        t_liq_dados.append([
+            Paragraph(f"<b>Quantidade: {len(df_liq_filtrada)}</b>", body_style), 
+            Paragraph("", body_style), 
+            Paragraph(f"<b>Total: R$ {formatar_moeda_pdf(total_liq)}</b>", bold_style)
+        ])
+        
+        t_liq = Table(t_liq_dados, colWidths=[130, 220, 150])
+        t_liq.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
+            ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor('#f8fafc')),
+            ('PADDING', (0,0), (-1,-1), 5),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        story.append(t_liq)
+
+    # ==============================================================================
+    # SEÇÃO INTERMEDIÁRIA ADICIONADA: PAGAMENTOS (DINÂMICA)
+    # ==============================================================================
+    if df_pag_filtrado is not None and not df_pag_filtrado.empty:
+        story.append(Paragraph("MOVIMENTAÇÕES DE PAGAMENTO", section_style))
+        
+        t_pag_dados = [[
+            Paragraph("Data", header_table_style),
+            Paragraph("Número Pagamento", header_table_style),
+            Paragraph("Valor", header_table_style)
+        ]]
+        
+        col_valor_pag = 'valor_nota_pagamento' if 'valor_nota_pagamento' in df_pag_filtrado.columns else 'valor_pago'
+        
+        total_pag = 0.0
+        for _, p_row in df_pag_filtrado.iterrows():
+            d_val = formatar_data_pdf(p_row.get('data_nota_pagamento'))
+            n_val = str(p_row.get('numero_nota_pagamento', 'N/A'))
+            
+            v_raw = p_row[col_valor_pag] if col_valor_pag in df_pag_filtrado.columns else 0.0
+            try: total_pag += float(v_raw)
+            except: pass
+            v_val = f"R$ {formatar_moeda_pdf(v_raw)}"
+            
+            t_pag_dados.append([Paragraph(d_val, body_style), Paragraph(n_val, body_style), Paragraph(v_val, body_style)])
+            
+        # Linha de Totalizador
+        t_pag_dados.append([
+            Paragraph(f"<b>Quantidade: {len(df_pag_filtrado)}</b>", body_style), 
+            Paragraph("", body_style), 
+            Paragraph(f"<b>Total: R$ {formatar_moeda_pdf(total_pag)}</b>", bold_style)
+        ])
+        
+        t_pag = Table(t_pag_dados, colWidths=[130, 220, 150])
+        t_pag.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
+            ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor('#f8fafc')),
+            ('PADDING', (0,0), (-1,-1), 5),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        story.append(t_pag)
 
     doc.build(story)
     buffer.seek(0)
