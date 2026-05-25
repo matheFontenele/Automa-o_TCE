@@ -4,10 +4,10 @@ import pandas as pd
 import glob
 import re
 from main import carregar_municipios
-from details_modal import exibir_modal_detalhes
-from details_modal_pagamento import exibir_modal_detalhes_pagamento
-from exportadores import renderizar_botoes_exportacao
-from details_modal import obter_caminho_arquivos_modal, carregar_e_filtrar_modal
+from src.views.details_modal import exibir_modal_detalhes
+from src.views.details_modal_pagamento import exibir_modal_detalhes_pagamento
+from src.utils.exportadores import renderizar_botoes_exportacao
+from src.views.details_modal import obter_caminho_arquivos_modal, carregar_e_filtrar_modal
 
 # ==============================================================================
 # CSS DOS CARDS (Otimizado e idêntico ao padrão visual do TCE)
@@ -576,7 +576,7 @@ def render_consultation_page():
             # ==============================================================================
             # BLOCO DE EXPORTAÇÃO
             # ==============================================================================
-            st.markdown("### 📥 Opções de Exportação Avançada")
+            st.markdown("### 📥 Opções de Exportação")
             
             # 1. Mantém o botão tradicional da base que está atualmente carregada na tela
             csv_tradicional = df.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')

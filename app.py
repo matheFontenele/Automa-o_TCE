@@ -1,7 +1,7 @@
 import streamlit as st
-import extraction
-import consultation
-from details_modal import exibir_modal_detalhes
+import src.database.extraction as extraction
+import src.views.consultation as consultation
+from src.views.details_modal import exibir_modal_detalhes
 
 st.set_page_config(page_title="Automação TCE-CE", layout="wide")
 

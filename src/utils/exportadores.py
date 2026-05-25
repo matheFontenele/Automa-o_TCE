@@ -100,7 +100,7 @@ def gerar_dataframe_detalhado(df_empenhos_filtrados, ano, codigo_mun, obter_cami
         'data_emissao_empenho', 'numero_empenho', 'data_referencia_empenho',
         'codigo_elemento_despesa', 'modalidade_empenho', 'descricao_empenho',
         'valor_anterior_saldo_dotacao', 'valor_empenhado', 'valor_atual_saldo_dotacao',
-        'nome_negociante'
+        'nome_negociante',
         # Base Pagamento
         'numero_nota_pagamento', 'data_referencia', 'nu_documento_caixa',
         'data_nota_pagamento', 'valor_nota_pagamento', 'valor_empenhado_a_pagar',
