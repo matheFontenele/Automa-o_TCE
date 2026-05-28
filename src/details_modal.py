@@ -5,7 +5,7 @@ import re
 import requests
 
 # IMPORTANDO O GERADOR DE PDF ISOLADO
-from src.utils.gerador_pdf import gerar_pdf_empenho
+from src.gerador_pdf import gerar_pdf_empenho
 
 # ==============================================================================
 # FUNÇÕES AUXILIARES DO MODAL
