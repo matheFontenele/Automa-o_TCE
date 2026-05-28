@@ -1,6 +1,7 @@
 import streamlit as st
 import src.extraction as extraction
 import src.consultation as consultation
+import src.compare as compare
 
 st.set_page_config(page_title="Automação TCE-CE", layout="wide")
 
@@ -49,7 +50,7 @@ if 'modo_tela' not in st.session_state:
 
 # Layout de Menu Superior
 st.title("🤖 Painel de Automação TCE-CE")
-col_nav1, col_nav2, col_spacer = st.columns([1.0, 1.0, 5])
+col_nav1, col_nav2, col_nav3, col_spacer = st.columns([1.0, 1.0, 1.0, 5])
 
 with col_nav1:
     if st.button("📊 Extração", key="btn_ext", 
@@ -63,6 +64,13 @@ with col_nav2:
         st.session_state.modo_tela = 'Consulta'
         st.rerun()
 
+with col_nav3:
+    if st.button("⚙️ Comparação", key="btn_cfg", 
+                 type="primary" if st.session_state.modo_tela == 'Comparação' else "secondary"):
+        st.session_state.modo_tela = 'Comparação'
+        st.rerun()
+        
+
 st.divider()
 
 # Exibição do conteúdo
@@ -70,3 +78,5 @@ if st.session_state.modo_tela == 'Extração':
     extraction.render_extraction_page()
 elif st.session_state.modo_tela == 'Consulta':
     consultation.render_consultation_page()
+elif st.session_state.modo_tela == 'Comparação':
+    compare.render_aba_comparacao()
